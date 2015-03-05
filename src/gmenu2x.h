@@ -50,6 +50,8 @@ const int LOOP_DELAY=30000;
 
 #if defined(TARGET_GP2X)
 	#define DEFAULT_CPU_CLK 200
+#elif defined(TARGET_Z2) 
+	#define DEFAULT_CPU_CLK 312
 #else
 	#define DEFAULT_CPU_CLK 533
 #endif
@@ -123,6 +125,9 @@ private:
 	Displays a selector and launches the specified executable file
 	*/
 	void explorer();
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+	void commander();
+#endif
 
 	bool inet, //!< Represents the configuration of the basic network services. @see readCommonIni @see usbnet @see samba @see web
 		usbnet,

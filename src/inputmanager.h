@@ -70,13 +70,11 @@ class InputManager {
 private:
 	InputMap getInputMapping(int action);
 	SDLEventList events;
-	SDL_TimerID wakeUpTimer;
 
 	vector <SDL_Joystick*> joysticks;
 	vector <InputManagerAction> actions;
 
 	static Uint32 checkRepeat(Uint32 interval, void *_data);
-	static Uint32 wakeUp(Uint32 interval, void *_data);
 	SDL_Event *fakeEventForAction(int action);
 
 public:
@@ -85,9 +83,7 @@ public:
 	static const int MAPPING_TYPE_AXIS = 1;
 	static const int MAPPING_TYPE_KEYPRESS = 2;
 
-	static const int SDL_WAKEUPEVENT = SDL_USEREVENT+1;
-
-	InputManager();
+	InputManager() {};
 	~InputManager();
 	void init(const string &conffile);
 	void initJoysticks();
@@ -98,7 +94,6 @@ public:
 	int count();
 	void setActionsCount(int count);
 	void setInterval(int ms, int action = -1);
-	void setWakeUpInterval(int ms);
 	bool operator[](int action);
 	bool isActive(int action);
 };

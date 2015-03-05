@@ -28,10 +28,6 @@
 using namespace std;
 
 
-InputManager::InputManager()
-	: wakeUpTimer(NULL) {}
-
-
 InputManager::~InputManager() {
 	for (uint x=0; x<joysticks.size(); x++)
 		if(SDL_JoystickOpened(x))
@@ -277,23 +273,6 @@ void InputManager::setInterval(int ms, int action) {
 			actions[x].interval = ms;
 	else if ((uint)action < actions.size())
 		actions[action].interval = ms;
-}
-
-
-void InputManager::setWakeUpInterval(int ms) {
-	if (wakeUpTimer != NULL)
-		SDL_RemoveTimer(wakeUpTimer);
-
-	if (ms > 0)
-		wakeUpTimer = SDL_AddTimer(ms, wakeUp, NULL);
-}
-
-
-Uint32 InputManager::wakeUp(Uint32 interval, void *_data) {
-	SDL_Event *event = new SDL_Event();
-	event->type = SDL_WAKEUPEVENT;
-	SDL_PushEvent( event );
-	return interval;
 }
 
 

@@ -22,6 +22,9 @@
 #include <SDL_gfxPrimitives.h>
 
 #include "inputdialog.h"
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+#include <stdlib.h>
+#endif
 
 using namespace std;
 using namespace fastdelegate;
@@ -45,6 +48,11 @@ InputDialog::InputDialog(GMenu2X *gmenu2x, InputManager &inputMgr_,
 		this->icon = icon;
 
 	input = startvalue;
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+	Surface bg(gmenu2x->s);
+	//Darken background
+	bg.box(0, 0, gmenu2x->resX, gmenu2x->resY, 0,0,0,200);
+#else
 	selCol = 0;
 	selRow = 0;
 	keyboard.resize(7);
@@ -100,8 +108,11 @@ InputDialog::InputDialog(GMenu2X *gmenu2x, InputManager &inputMgr_,
 
 	btnChangeKeys = new IconButton(gmenu2x, "skin:imgs/buttons/y.png", gmenu2x->tr["Change keys"]);
 	btnChangeKeys->setAction(MakeDelegate(this, &InputDialog::changeKeys));
+#endif
 }
 
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+#else
 void InputDialog::setKeyboard(int kb) {
 	kb = constrain(kb,0,keyboard.size()-1);
 	curKeyboard = kb;
@@ -122,35 +133,47 @@ void InputDialog::setKeyboard(int kb) {
 	kbRect.w = kbWidth;
 	kbRect.h = kbHeight;
 }
+#endif
 
 bool InputDialog::exec() {
 	SDL_Rect box = {0, 60, 0, gmenu2x->font->getHeight()+4};
 
 	Uint32 caretTick = 0, curTick;
 	bool caretOn = true;
-
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+	bool dlg_close = false;
+	bool dlg_ok = true;
+	SDL_EnableUNICODE(SDL_ENABLE);
+	while (!dlg_close) {
+#else
 	uint action;
 	close = false;
 	ok = true;
 	while (!close) {
+#endif
 		gmenu2x->bg->blit(gmenu2x->s,0,0);
 		writeTitle(title);
 		writeSubTitle(text);
 		drawTitleIcon(icon);
 
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+		// Do NOT show letter button hints if we are using real kbd input.
+		//gmenu2x->drawButton(gmenu2x->s, "b", gmenu2x->tr["Confirm"],
+		//gmenu2x->drawButton(gmenu2x->s, "x", gmenu2x->tr["Exit"]));
+#else
 		gmenu2x->drawButton(gmenu2x->s, "y", gmenu2x->tr["Change keys"],
 		gmenu2x->drawButton(gmenu2x->s, "b", gmenu2x->tr["Confirm"],
 		gmenu2x->drawButton(gmenu2x->s, "r", gmenu2x->tr["Space"],
 		gmenu2x->drawButton(btnBackspaceL,
 		gmenu2x->drawButton(btnBackspaceX)-6))));
-
+#endif
 		box.w = gmenu2x->font->getTextWidth(input)+18;
 		box.x = 160-box.w/2;
 		gmenu2x->s->box(box.x, box.y, box.w, box.h,
 		gmenu2x->skinConfColors[COLOR_SELECTION_BG]);
 		gmenu2x->s->rectangle(box.x, box.y, box.w, box.h, gmenu2x->skinConfColors[COLOR_SELECTION_BG]);
 
-		gmenu2x->s->write(gmenu2x->font, input, box.x+5, box.y+box.h-4, HAlignLeft, VAlignBottom);
+		gmenu2x->s->write(gmenu2x->font, input, box.x+5, box.y+box.h-2, HAlignLeft, VAlignBottom);
 
 		curTick = SDL_GetTicks();
 		if (curTick-caretTick>=600) {
@@ -160,6 +183,54 @@ bool InputDialog::exec() {
 
 		if (caretOn) gmenu2x->s->box(box.x+box.w-12, box.y+3, 8, box.h-6, gmenu2x->skinConfColors[COLOR_SELECTION_BG]);
 
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+		gmenu2x->s->flip();
+
+		SDL_Event event;
+		if (SDL_PollEvent(&event))
+		{
+			if(event.type == SDL_KEYDOWN){
+				
+			//	SDLMod modifier = event.key.keysym.mod;
+			//	if( modifier & (KMOD_LCTRL | KMOD_LSHIFT | KMOD_LALT) )
+			//		continue;
+					
+				switch (event.key.keysym.sym)
+				{
+					case SDLK_ESCAPE:
+							dlg_ok = false;
+					case SDLK_RETURN:
+							dlg_close = true;
+							break;
+					case SDLK_SPACE:
+							input += ' '; 
+							break;
+					case SDLK_BACKSPACE:
+							backspace();  
+							break;
+					case SDLK_LSHIFT:
+					case SDLK_LCTRL:
+					case SDLK_LALT:
+					case SDLK_RALT:
+					case SDLK_RSHIFT:
+					case SDLK_RCTRL:
+					case SDLK_HOME:
+					case SDLK_END:
+							break;
+					default:
+#ifdef ZIPIT_Z2 /* dead key accent mappings for latin15 */
+					  extern int processTextKey(SDL_Event event, string &input);
+					  processTextKey(event, input);
+					  break;
+#endif
+				}
+			}
+		}
+		usleep(LOOP_DELAY);
+	}
+	SDL_EnableUNICODE(SDL_DISABLE);
+	return dlg_ok;
+#else
 		if (gmenu2x->f200) ts.poll();
 		action = drawVirtualKeyboard();
 		gmenu2x->s->flip();
@@ -199,15 +270,27 @@ bool InputDialog::exec() {
 			case ID_ACTION_SELECT: confirm(); break;
 		}
 	}
-
 	return ok;
+#endif
 }
 
 void InputDialog::backspace() {
 	//                                      check for utf8 characters
+#ifdef ZIPIT_Z2 /* dead key accent mappings for latin15 */
+	int i;
+	for (i = input.length()-1; i >= 0; i--)
+	  if ((input[i] & 0xC0) != 0x80)
+	    break;
+	if (i < 0) 
+	  i = 0;
+	input = input.substr(0,i);
+#else
 	input = input.substr(0,input.length()-( gmenu2x->font->utf8Code(input[input.length()-2]) ? 2 : 1 ));
+#endif
 }
 
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+#else
 void InputDialog::space() {
 	//                                      check for utf8 characters
 	input += " ";
@@ -279,7 +362,7 @@ int InputDialog::drawVirtualKeyboard() {
 			}
 
 			gmenu2x->s->rectangle(re, gmenu2x->skinConfColors[COLOR_SELECTION_BG]);
-			gmenu2x->s->write(gmenu2x->font, charX, kbLeft+xc*KEY_WIDTH+KEY_WIDTH/2-1, KB_TOP+l*KEY_HEIGHT+KEY_HEIGHT/2-2, HAlignCenter, VAlignMiddle);
+			gmenu2x->s->write(gmenu2x->font, charX, kbLeft+xc*KEY_WIDTH+KEY_WIDTH/2-1, KB_TOP+l*KEY_HEIGHT+KEY_HEIGHT/2, HAlignCenter, VAlignMiddle);
 			xc++;
 		}
 	}
@@ -308,3 +391,4 @@ int InputDialog::drawVirtualKeyboard() {
 
 	return action;
 }
+#endif

@@ -34,7 +34,11 @@ private:
 	vector<string> directories, files, excludes;
 
 public:
+#ifdef TARGET_Z2
+	FileLister(const string &startPath = "/mnt/sd0", bool showDirectories = true, bool showFiles = true);
+#else
 	FileLister(const string &startPath = "/mnt/sd", bool showDirectories = true, bool showFiles = true);
+#endif
 	void browse();
 
 	unsigned int size();

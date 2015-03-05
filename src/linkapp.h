@@ -45,7 +45,7 @@ private:
 	//G
 	int igamma;
 	string exec, params, workdir, manual, selectordir, selectorfilter, selectorscreens;
-	bool selectorbrowser, useRamTimings, useGinge;
+	bool selectorbrowser, useRamTimings;
 	void drawRun();
 
 	string aliasfile;
@@ -73,8 +73,6 @@ public:
 	void setSelectorBrowser(bool value);
 	bool getUseRamTimings();
 	void setUseRamTimings(bool value);
-	bool getUseGinge();
-	void setUseGinge(bool value);
 	const string &getSelectorScreens();
 	void setSelectorScreens(const string &selectorscreens);
 	const string &getSelectorFilter();

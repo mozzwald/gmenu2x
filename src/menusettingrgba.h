@@ -49,12 +49,12 @@ public:
 	virtual void drawSelected(int y);
 	virtual bool edited();
 
-	void setSelPart(unsigned short int value);
-	void setR(unsigned short int r);
-	void setG(unsigned short int g);
-	void setB(unsigned short int b);
-	void setA(unsigned short int a);
-	unsigned short int getSelPart();
+	void setSelPart(unsigned short value);
+	void setR(unsigned short r);
+	void setG(unsigned short g);
+	void setB(unsigned short b);
+	void setA(unsigned short a);
+	unsigned short getSelPart();
 	RGBAColor value();
 };
 

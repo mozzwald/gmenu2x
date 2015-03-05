@@ -62,9 +62,17 @@ int Selector::exec(int startSelection) {
 	writeSubTitle(link->getDescription(), &bg);
 
 	if (link->getSelectorBrowser()) {
+#if defined(TARGET_Z2)
+		// Let the SPACE key play a whole directory.  Switch to TAB for Cancel.
+		gmenu2x->drawButton(&bg, "select", gmenu2x->tr["Exit"],
+		gmenu2x->drawButton(&bg, "start", gmenu2x->tr["a folder"],
+		gmenu2x->drawButton(&bg, "b", gmenu2x->tr["Select a file"],
+		gmenu2x->drawButton(&bg, "x", gmenu2x->tr["Up one folder"], 5))));
+#else
 		gmenu2x->drawButton(&bg, "start", gmenu2x->tr["Exit"],
 		gmenu2x->drawButton(&bg, "b", gmenu2x->tr["Select a file"],
 		gmenu2x->drawButton(&bg, "x", gmenu2x->tr["Up one folder"], 5)));
+#endif
 	} else {
 		gmenu2x->drawButton(&bg, "x", gmenu2x->tr["Exit"],
 		gmenu2x->drawButton(&bg, "b", gmenu2x->tr["Select a file"], 5));
@@ -80,7 +88,6 @@ int Selector::exec(int startSelection) {
 	if (gmenu2x->sc.skinRes("imgs/folder.png")==NULL)
 		gmenu2x->sc.addSkinRes("imgs/folder.png");
 	gmenu2x->sc.defaultAlpha = false;
-	gmenu2x->input.setWakeUpInterval(40); //25FPS
 	while (!close) {
 		bg.blit(gmenu2x->s,0,0);
 
@@ -117,7 +124,25 @@ int Selector::exec(int startSelection) {
 
 
 		gmenu2x->input.update();
+#if defined(TARGET_Z2)
+		// Let the SPACE key play a whole directory.  Switch to TAB for Cancel.
+		if ( gmenu2x->input[MENU] ) { close = true; result = false; }
+		if ( gmenu2x->input[SETTINGS] ) { 
+			file = fl[selected];
+			close = true; 
+			if (fl.isDirectory(selected)) {
+				file = file+"/*"; 
+				//fl->setPath(dir+file+"/"); // Apply the filter...
+				//loop through filtered files and add them to file string.
+				// Then we must update launch() to handle many files instead of *.
+				//file = "";
+				//for (uint i=0; i<fl->getFiles().size(); i++)
+				//  file = file + " " + fl->getFiles()[i];
+			}
+		}
+#else
 		if ( gmenu2x->input[SETTINGS] ) { close = true; result = false; }
+#endif
 		if ( gmenu2x->input[UP] ) {
 			if (selected==0) {
 				selected = fl.size()-1;
@@ -150,7 +175,11 @@ int Selector::exec(int startSelection) {
 			}
 			selTick = SDL_GetTicks();
 		}
+#if defined(TARGET_Z2)
+		if (( gmenu2x->input[CANCEL] ) || ( gmenu2x->input[LEFT] )) {
+#else
 		if ( gmenu2x->input[CANCEL] ) {
+#endif
 			if (link->getSelectorBrowser()) {
 				string::size_type p = dir.rfind("/", dir.size()-2);
 				if (p==string::npos || dir.compare(0,CARD_ROOT_LEN,CARD_ROOT)!=0 || p<4) {
@@ -168,7 +197,11 @@ int Selector::exec(int startSelection) {
 				result = false;
 			}
 		}
+#if defined(TARGET_Z2)
+		if (( gmenu2x->input[CONFIRM] ) || ( gmenu2x->input[RIGHT] )) {
+#else
 		if ( gmenu2x->input[CONFIRM] ) {
+#endif
 			if (fl.isFile(selected)) {
 				file = fl[selected];
 				close = true;
@@ -182,7 +215,6 @@ int Selector::exec(int startSelection) {
 	}
 	gmenu2x->sc.defaultAlpha = true;
 	freeScreenshots(&screens);
-	gmenu2x->input.setWakeUpInterval(0);
 
 	return result ? (int)selected : -1;
 }

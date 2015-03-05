@@ -18,6 +18,9 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#ifdef ZIPIT_Z2 // Save space -- Skip Manual file format.
+#else
+
 #include <sstream>
 #include "textmanualdialog.h"
 
@@ -104,13 +107,21 @@ void TextManualDialog::exec() {
 		if ( gmenu2x->input[DOWN] && firstRow+rowsPerPage<pages[page].text.size() ) firstRow++;
 		if ( gmenu2x->input[LEFT ] && page>0 ) { page--; firstRow=0; }
 		if ( gmenu2x->input[RIGHT] && page<pages.size()-1 ) { page++; firstRow=0; }
+#ifdef ZIPIT_Z2 // Allow Prev, Next buttons to page up, down in text dialogs.
+		if (( gmenu2x->input[PAGEUP] ) || ( gmenu2x->input[SECTION_PREV] )) {
+#else
 		if ( gmenu2x->input[PAGEUP] ) {
+#endif
 			if (firstRow>=rowsPerPage-1)
 				firstRow-= rowsPerPage-1;
 			else
 				firstRow = 0;
 		}
+#ifdef ZIPIT_Z2 // Allow Prev, Next buttons to page up, down in text dialogs.
+		if (( gmenu2x->input[PAGEDOWN] ) || ( gmenu2x->input[SECTION_NEXT] )) {
+#else
 		if ( gmenu2x->input[PAGEDOWN] ) {
+#endif
 			if (firstRow+rowsPerPage*2-1<pages[page].text.size())
 				firstRow+= rowsPerPage-1;
 			else
@@ -119,3 +130,5 @@ void TextManualDialog::exec() {
 		if ( gmenu2x->input[SETTINGS] || gmenu2x->input[CANCEL] ) close = true;
 	}
 }
+
+#endif

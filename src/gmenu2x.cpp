@@ -118,12 +118,50 @@ static void quit_all(int err) {
 	exit(err);
 }
 
+#if defined(TARGET_Z2)
+char *progpath = "/mnt/ffs/gmenu2x/";
+const char sdcard[] = "/mnt/sd0/";
+#endif
+
+#ifdef TARGET_Z2
+// Commander
+#include "def.h"
+#include "sdlutils.h"
+#include "resourceManager.h"
+#include "commander.h"
+
+// Globals
+SDL_Surface *Globals::g_screen = NULL;
+const SDL_Color Globals::g_colorTextNormal = {COLOR_TEXT_NORMAL};
+const SDL_Color Globals::g_colorTextTitle = {COLOR_TEXT_TITLE};
+const SDL_Color Globals::g_colorTextDir = {COLOR_TEXT_DIR};
+const SDL_Color Globals::g_colorTextSelected = {COLOR_TEXT_SELECTED};
+std::vector<CWindow *> Globals::g_windows;
+
+void GMenu2X::commander() {
+    // Screen
+    //Globals::g_screen = s->dblbuffer;
+
+    // Create instances
+    std::string l_path = getenv("HOME");
+    CCommander l_commander(l_path, l_path);
+
+    // Main loop
+    l_commander.execute();
+}
+#endif
+
 int main(int /*argc*/, char * /*argv*/[]) {
 	INFO("GMenu2X starting: If you read this message in the logs, check http://mtorromeo.github.com/gmenu2x/troubleshooting.html for a solution");
 
 	signal(SIGINT, &quit_all);
 	signal(SIGSEGV,&quit_all);
 	signal(SIGTERM,&quit_all);
+
+#if defined(TARGET_Z2)
+	progpath = get_current_dir_name();	
+	strcat(progpath, "/");
+#endif
 
 	app = new GMenu2X();
 	DEBUG("Starting main()");
@@ -244,6 +282,12 @@ GMenu2X::GMenu2X() {
 
 	//load config data
 	readConfig();
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	// Read the current mixer volume settings and ignore globalVolume.
+	volumeScalerPhones=getVolume();
+	volumeScalerNormal=getVolumeScaler();
+	//volumeScalerNormal=2;
+#else
 	if (fwType=="open2x") {
 		readConfigOpen2x();
 		//	VOLUME MODIFIER
@@ -256,6 +300,7 @@ GMenu2X::GMenu2X() {
 #if defined(TARGET_GP2x)
 	else
 		readCommonIni();
+#endif
 #endif
 
 	halfX = resX/2;
@@ -297,12 +342,15 @@ GMenu2X::GMenu2X() {
 	}
 
 	s = new Surface();
-#if defined(TARGET_GP2X) || defined(TARGET_WIZ) || defined(TARGET_CAANOO)
+#if defined(TARGET_GP2X) || defined(TARGET_WIZ) || defined(TARGET_CAANOO) || defined(TARGET_Z2)
 	{
 		//I'm forced to use SW surfaces since with HW there are issuse with changing the clock frequency
 		SDL_Surface *dbl = SDL_SetVideoMode(resX, resY, confInt["videoBpp"], SDL_SWSURFACE);
 		s->enableVirtualDoubleBuffer(dbl);
 		SDL_ShowCursor(0);
+		
+		Globals::g_screen = dbl;
+
 	}
 #else
 	s->raw = SDL_SetVideoMode(resX, resY, confInt["videoBpp"], SDL_HWSURFACE|SDL_DOUBLEBUF);
@@ -333,7 +381,11 @@ GMenu2X::GMenu2X() {
 	initServices();
 
 	setGamma(confInt["gamma"]);
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	// Read the current mixer volume settings and ignore globalVolume.
+#else
 	setVolume(confInt["globalVolume"]);
+#endif
 	applyDefaultTimings();
 	setClock(confInt["menuClock"]);
 
@@ -390,8 +442,13 @@ void GMenu2X::initBG() {
 	sc.add(bgmain,"bgmain");
 
 	Surface sd("imgs/sd.png", confStr["skin"]);
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	Surface cpu("imgs/volume.png", confStr["skin"]);
+	Surface volume("imgs/phones.png", confStr["skin"]);
+#else
 	Surface cpu("imgs/cpu.png", confStr["skin"]);
 	Surface volume("imgs/volume.png", confStr["skin"]);
+#endif
 	string df = getDiskFree();
 
 	sd.blit( sc["bgmain"], 3, bottomBarIconY );
@@ -402,7 +459,11 @@ void GMenu2X::initBG() {
 	cpuX = volumeX+font->getTextWidth("100")+5;
 	cpu.blit( sc["bgmain"], cpuX, bottomBarIconY );
 	cpuX += 19;
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
 	manualX = cpuX+font->getTextWidth("300Mhz")+5;
+#else
+	manualX = cpuX+font->getTextWidth("100")+5;
+#endif
 
 #if defined(TARGET_GP2X)
 	int serviceX = resX-38;
@@ -439,8 +500,15 @@ void GMenu2X::initMenu() {
 	menu = new Menu(this);
 	for (uint i=0; i<menu->getSections().size(); i++) {
 		//Add virtual links in the applications section
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+		if ((menu->getSections()[i]=="applications") || (menu->getSections()[i]=="apps")) {
+#else
 		if (menu->getSections()[i]=="applications") {
+#endif
 			menu->addActionLink(i,"Explorer",MakeDelegate(this,&GMenu2X::explorer),tr["Launch an application"],"skin:icons/explorer.png");
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+			menu->addActionLink(i,"Files",MakeDelegate(this,&GMenu2X::commander),tr["File Manager"],"skin:icons/section.png");
+#endif
 		}
 
 		//Add virtual links in the setting section
@@ -467,6 +535,12 @@ void GMenu2X::initMenu() {
 	menu->setLinkIndex(confInt["link"]);
 
 	menu->loadIcons();
+
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+	// Commander resources
+	CResourceManager::instance();
+#endif
+
 }
 
 void GMenu2X::about() {
@@ -501,8 +575,7 @@ Pickle for the initial Wiz and Caanoo ports\n\
 \n\
  Beta testers\n\
 ----\n\
-Goemon4, PokeParadox, PSyMastR and Tripmonkey_uk (GP2X)\n\
-Yann Vaillant (WIZ)\n\
+Goemon4, PokeParadox, PSyMastR and Tripmonkey_uk\n\
 \n\
  Translators\n\
 ----\n\
@@ -535,7 +608,7 @@ lorystorm90\n\
 and all the anonymous donors...\n\
 (If I missed to list you or if you want to be removed, contact me.)";
 	split(text, temp, "\n");
-	TextDialog td(this, "GMenu2X", tr.translate("Version $1 (Build date: $2)", "0.12", __DATE__, NULL), "icons/about.png", &text);
+	TextDialog td(this, "GMenu2X", tr.translate("Version $1 (Build date: $2)","0.11",__DATE__,NULL), "icons/about.png", &text);
 	td.exec();
 }
 
@@ -593,10 +666,13 @@ void GMenu2X::readConfig() {
 	evalIntConf( &confInt["outputLogs"], 0, 0,1 );
 #ifdef TARGET_GP2X
 	evalIntConf( &confInt["maxClock"], 300, 200,300 );
-	evalIntConf( &confInt["menuClock"], 140, 50,300 );
+	evalIntConf( &confInt["menuClock"], f200 ? 136 : 100, 50,300 );
 #elif defined(TARGET_WIZ) || defined(TARGET_CAANOO)
 	evalIntConf( &confInt["maxClock"], 900, 200,900 );
 	evalIntConf( &confInt["menuClock"], DEFAULT_CPU_CLK, 50,300 );
+#elif defined(TARGET_Z2)
+	evalIntConf( &confInt["maxClock"], 416, 200,416 );
+	evalIntConf( &confInt["menuClock"], DEFAULT_CPU_CLK, 50,312 );
 #endif
 	evalIntConf( &confInt["globalVolume"], 67, 0,100 );
 	evalIntConf( &confInt["gamma"], 10, 1,100 );
@@ -628,6 +704,8 @@ void GMenu2X::writeConfig() {
 
 
 void GMenu2X::readConfigOpen2x() {
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#else
 	string conffile = "/etc/config/open2x.conf";
 	if (!fileExists(conffile)) return;
 	ifstream inf(conffile.c_str(), ios_base::in);
@@ -651,8 +729,11 @@ void GMenu2X::readConfigOpen2x() {
 		else if (name=="NORMAL_VALUE") volumeScalerNormal = constrain( atoi(value.c_str()), 0, 150);
 	}
 	inf.close();
+#endif
 }
 void GMenu2X::writeConfigOpen2x() {
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#else
 	ledOn();
 	string conffile = "/etc/config/open2x.conf";
 	ofstream inf(conffile.c_str());
@@ -672,6 +753,7 @@ void GMenu2X::writeConfigOpen2x() {
 		sync();
 	}
 	ledOff();
+#endif
 }
 
 void GMenu2X::writeSkinConfig() {
@@ -689,10 +771,10 @@ void GMenu2X::writeSkinConfig() {
 
 		for (int i = 0; i < NUM_COLORS; ++i) {
 			inf << colorToString((enum color)i) << "=#"
-				<< hex << setw(2) << setfill('0') << right << (unsigned short)skinConfColors[i].r
-				<< hex << setw(2) << setfill('0') << right << (unsigned short)skinConfColors[i].g
-				<< hex << setw(2) << setfill('0') << right << (unsigned short)skinConfColors[i].b
-				<< hex << setw(2) << setfill('0') << right << (unsigned short)skinConfColors[i].a << endl;
+				<< hex << setw(2) << setfill('0') << right << skinConfColors[i].r
+				<< hex << setw(2) << setfill('0') << right << skinConfColors[i].g
+				<< hex << setw(2) << setfill('0') << right << skinConfColors[i].b
+				<< hex << setw(2) << setfill('0') << right << skinConfColors[i].a << endl;
 		}
 
 
@@ -811,6 +893,10 @@ void GMenu2X::main() {
 	uint i;
 	long tickBattery = -60000, tickNow;
 	string batteryIcon = "imgs/battery/0.png";
+#ifdef TARGET_Z2
+	long tickWifi = -10000;
+	string wifiIcon = "imgs/wifi/off.png";
+#endif
 	stringstream ss;
 	uint sectionsCoordX = 24;
 	SDL_Rect re = {0,0,0,0};
@@ -827,6 +913,9 @@ void GMenu2X::main() {
 
 		//Sections
 		sectionsCoordX = halfX - (constrain((uint)menu->getSections().size(), 0 , linkColumns) * skinConfInt["linkWidth"]) / 2;
+#ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar.
+		
+#else
 		if (menu->firstDispSection()>0)
 			sc.skinRes("imgs/l_enabled.png")->blit(s,0,0);
 		else
@@ -835,6 +924,7 @@ void GMenu2X::main() {
 			sc.skinRes("imgs/r_enabled.png")->blit(s,resX-10,0);
 		else
 			sc.skinRes("imgs/r_disabled.png")->blit(s,resX-10,0);
+#endif
 		for (i=menu->firstDispSection(); i<menu->getSections().size() && i<menu->firstDispSection()+linkColumns; i++) {
 			string sectionIcon = "skin:sections/"+menu->getSections()[i]+".png";
 			x = (i-menu->firstDispSection())*skinConfInt["linkWidth"]+sectionsCoordX;
@@ -866,6 +956,10 @@ void GMenu2X::main() {
 
 		drawScrollBar(linkRows,menu->sectionLinks()->size()/linkColumns + ((menu->sectionLinks()->size()%linkColumns==0) ? 0 : 1),menu->firstDispRow(),43,resY-81);
 
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+		// Handy spot for the mute icon.
+		//sc.skinRes("imgs/mute.png")->blit(s,resX-56,bottomBarIconY); 
+#else
 		if (fwType=="open2x") {
 			switch(volumeMode) {
 				case VOLUME_MODE_MUTE:   sc.skinRes("imgs/mute.png")->blit(s,resX-56,bottomBarIconY); break;
@@ -873,7 +967,30 @@ void GMenu2X::main() {
 				default: sc.skinRes("imgs/volume.png")->blit(s,resX-56,bottomBarIconY); break;
 			}
 		}
-
+#endif
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+		if (menu->selLink()!=NULL) {
+			s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
+			{ // zipit volume is independent of menu->selLinkApp()
+				stringstream ss;
+				string speakerStr = "";
+				string phonesStr = "";
+				ss.clear();
+				ss << volumeScalerNormal;
+				ss >> speakerStr;
+				s->write ( font, speakerStr, cpuX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+				ss.clear();
+				ss << volumeScalerPhones;
+				ss >> phonesStr;
+				s->write ( font, phonesStr, volumeX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+			}
+			if (menu->selLinkApp()!=NULL) {
+				//Manual indicator
+				if (!menu->selLinkApp()->getManual().empty())
+					sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
+			}
+		}
+#else
 		if (menu->selLink()!=NULL) {
 			s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
 			if (menu->selLinkApp()!=NULL) {
@@ -884,10 +1001,56 @@ void GMenu2X::main() {
 					sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
 			}
 		}
+#endif
 
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+		// No touchscreen so show inet icon instead of btnContextMenu
+		if (tickNow-tickWifi >= 10000) {
+			tickWifi = tickNow;
+
+			char *eth0start;
+			FILE *devfd;
+			int level=0, noise;
+			char buf[256];
+			static int bufsize = 255;
+			
+			devfd = fopen("/proc/net/wireless", "r");
+			
+			// ignore the first two lines of the file
+			fgets(buf, bufsize, devfd);
+			fgets(buf, bufsize, devfd);
+			
+			while (fgets(buf, bufsize, devfd)) {
+			  if ((eth0start = strstr(buf, "eth0:")) != NULL) {
+			    sscanf(eth0start + 6, "%*d %*d %d  %d", &level, &noise);
+			    level -= noise;
+			    if (level < 0)
+			      level = 0;
+			    break;
+			  }
+			}
+			fclose(devfd);
+			
+			if (level == 0){
+				wifiIcon = "imgs/wifi/off.png";
+			}
+			else{
+			  	level = level / 15 +1;
+				if (level > 5) level = 5;
+				ss.clear();
+				ss << level;
+				ss >> wifiIcon;
+				wifiIcon = "imgs/wifi/"+wifiIcon+".png";
+			}
+			//Surface inetS(wifiIcon, confStr["skin"]);
+			//inetS.blit( sc["bgmain"], resX-38, bottomBarIconY );
+		}
+		sc.skinRes(wifiIcon)->blit( s, resX-38, bottomBarIconY );
+#else
 		if (f200) {
 			btnContextMenu->paint();
 		}
+#endif
 		//check battery status every 60 seconds
 		if (tickNow-tickBattery >= 60000) {
 			tickBattery = tickNow;
@@ -908,6 +1071,15 @@ void GMenu2X::main() {
 			s->box(10,50,300,143, skinConfColors[COLOR_MESSAGE_BOX_BG]);
 			s->rectangle( 12,52,296,helpBoxHeight, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );
 			s->write( font, tr["CONTROLS"], 20, 60 );
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+			s->write( font, tr["Enter  -   Launch link / Confirm action"], 20, 80 );
+			s->write( font, tr["<<  >>  -   Change section"], 20, 95 );
+			s->write( font, tr["H     -   Show manual/readme"], 20, 110 );
+			s->write( font, tr["Tab   -   Show contextual menu"], 20, 125 );
+			s->write( font, tr["Space  -   Show options menu"], 20, 140 );
+			s->write( font, tr["VolUp, VolDown  -  Change headphone volume"], 20, 155 );
+			s->write( font, tr["Ctrl-VolUp, VolDown  -  Speaker volume"], 20, 170 );
+#else
 			s->write( font, tr["B, Stick press: Launch link / Confirm action"], 20, 80 );
 			s->write( font, tr["L, R: Change section"], 20, 95 );
 			s->write( font, tr["Y: Show manual/readme"], 20, 110 );
@@ -916,10 +1088,13 @@ void GMenu2X::main() {
 			s->write( font, tr["SELECT: Show contextual menu"], 20, 155 );
 			s->write( font, tr["START: Show options menu"], 20, 170 );
 			if (fwType=="open2x") s->write( font, tr["X: Toggle speaker mode"], 20, 185 );
+#endif
 		}
 
 		s->flip();
 
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+#else
 		//touchscreen
 		if (f200) {
 			ts.poll();
@@ -947,12 +1122,19 @@ void GMenu2X::main() {
 				i++;
 			}
 		}
-
+#endif
 		input.update();
 		if ( input[CONFIRM] && menu->selLink()!=NULL ) menu->selLink()->run();
 		else if ( input[SETTINGS]  ) options();
 		else if ( input[MENU] ) contextMenu();
 		// VOLUME SCALE MODIFIER
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+		// Read the current mixer volume settings.  Maybe do MUTE here?
+		else if ( fwType=="open2x" && input[CANCEL] ) {
+			volumeScalerPhones=getVolume();
+			volumeScalerNormal=getVolumeScaler();
+		}
+#else
 		else if ( fwType=="open2x" && input[CANCEL] ) {
 			volumeMode = constrain(volumeMode-1, -VOLUME_MODE_MUTE-1, VOLUME_MODE_NORMAL);
 			if(volumeMode < VOLUME_MODE_MUTE)
@@ -964,11 +1146,28 @@ void GMenu2X::main() {
 			}
 			setVolume(confInt["globalVolume"]);
 		}
+#endif
 		// LINK NAVIGATION
 		else if ( input[LEFT ]  ) menu->linkLeft();
 		else if ( input[RIGHT]  ) menu->linkRight();
 		else if ( input[UP   ]  ) menu->linkUp();
 		else if ( input[DOWN ]  ) menu->linkDown();
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+		// Speaker VOLUME
+		else if ( input[VOLDOWN] && input.isActive(MODIFIER) )
+			setVolumeScaler( constrain( volumeScalerNormal-1, 0, 100));
+		else if ( input[VOLUP] && input.isActive(MODIFIER) )
+			setVolumeScaler( constrain( volumeScalerNormal+1, 0, 100));
+		// HeadPhone VOLUME
+		else if ( input[VOLDOWN] && !input.isActive(MODIFIER) )
+			setVolume( constrain( volumeScalerPhones-1, 0, 100));
+		else if ( input[VOLUP] && !input.isActive(MODIFIER) )
+			setVolume( constrain( volumeScalerPhones+1, 0, 100));
+		// SELLINKAPP SELECTED
+		else if (menu->selLinkApp()!=NULL) {
+			if ( input[MANUAL] ) menu->selLinkApp()->showManual();
+		}
+#else
 		// SELLINKAPP SELECTED
 		else if (menu->selLinkApp()!=NULL) {
 			if ( input[MANUAL] ) menu->selLinkApp()->showManual();
@@ -988,6 +1187,7 @@ void GMenu2X::main() {
 				if ( input.isActive(VOLUP) && input.isActive(VOLDOWN) ) menu->selLinkApp()->setClock(DEFAULT_CPU_CLK);
 			}
 		}
+#endif
 		if ( input.isActive(MODIFIER) ) {
 			if (input.isActive(SECTION_PREV) && input.isActive(SECTION_NEXT))
 				saveScreenshot();
@@ -1008,20 +1208,34 @@ void GMenu2X::main() {
 }
 
 void GMenu2X::explorer() {
+#ifdef TARGET_Z2
+	FileDialog fd(this,tr["Select an application"],"");
+#else
 	FileDialog fd(this,tr["Select an application"],".gpu,.gpe,.sh");
+#endif
 	if (fd.exec()) {
 		if (confInt["saveSelection"] && (confInt["section"]!=menu->selSectionIndex() || confInt["link"]!=menu->selLinkIndex()))
 			writeConfig();
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#else
 		if (fwType == "open2x" && savedVolumeMode != volumeMode)
 			writeConfigOpen2x();
-
+#endif
 		//string command = cmdclean(fd.path()+"/"+fd.file) + "; sync & cd "+cmdclean(getExePath())+"; exec ./gmenu2x";
+#ifdef TARGET_Z2
+		// Trap INT and TERM signals or they will kill this wrapper before the return to gmenu. 
+		string command = "trap - INT TERM; " + cmdclean(fd.getPath()+"/"+fd.getFile());
+		string filepath = progpath; //gmenu2x->getExePath();
+
+		// Force uclibc to end the suspended parent process with a killall.
+		command += "; sync & cd "+ cmdclean(filepath) +"; killall -9 gmenu2x; exec ./gmenu2x";
+#else
 		string command = cmdclean(fd.getPath()+"/"+fd.getFile());
+#endif
 		chdir(fd.getPath().c_str());
 		quit();
 		setClock(DEFAULT_CPU_CLK);
 		execlp("/bin/sh","/bin/sh","-c",command.c_str(),NULL);
-
 		//if execution continues then something went wrong and as we already called SDL_Quit we cannot continue
 		//try relaunching gmenu2x
 		WARNING("Error executing selected application, re-launching gmenu2x");
@@ -1080,6 +1294,8 @@ void GMenu2X::options() {
 }
 
 void GMenu2X::settingsOpen2x() {
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#else
 	SettingsDialog sd(this, input, ts, tr["Open2x Settings"]);
 	sd.addSetting(new MenuSettingBool(this,tr["USB net on boot"],tr["Allow USB networking to be started at boot time"],&o2x_usb_net_on_boot));
 	sd.addSetting(new MenuSettingString(this,tr["USB net IP"],tr["IP address to be used for USB networking"],&o2x_usb_net_ip));
@@ -1102,6 +1318,7 @@ void GMenu2X::settingsOpen2x() {
 		}
 		setVolume(confInt["globalVolume"]);
 	}
+#endif
 }
 
 void GMenu2X::skinMenu() {
@@ -1163,7 +1380,7 @@ void GMenu2X::setSkin(const string &skin, bool setWallpaper) {
 	skinConfColors[COLOR_MESSAGE_BOX_BORDER] = (RGBAColor){80,80,80,255};
 	skinConfColors[COLOR_MESSAGE_BOX_SELECTION] = (RGBAColor){160,160,160,255};
 	skinConfColors[COLOR_FONT] = (RGBAColor){255,255,255,255};
-	skinConfColors[COLOR_FONT_OUTLINE] = (RGBAColor){0,0,0,200};
+	skinConfColors[COLOR_FONT_OUTLINE] = (RGBAColor){0,0,0,130};
 
 	//load skin settings
 	string skinconfname = "skins/"+skin+"/skin.conf";
@@ -1212,6 +1429,8 @@ void GMenu2X::setSkin(const string &skin, bool setWallpaper) {
 	initFont();
 }
 
+#ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar.
+#else
 void GMenu2X::activateSdUsb() {
 	if (usbnet) {
 		MessageBox mb(this,tr["Operation not permitted."]+"\n"+tr["You should disable Usb Networking to do this."]);
@@ -1250,6 +1469,7 @@ void GMenu2X::activateRootUsb() {
 		system("scripts/usboff.sh root");
 	}
 }
+#endif
 
 void GMenu2X::contextMenu() {
 	vector<MenuOption> voices;
@@ -1288,7 +1508,7 @@ void GMenu2X::contextMenu() {
 	int h = font->getHeight();
 	int h2 = font->getHalfHeight();
 	SDL_Rect box;
-	box.h = h*voices.size()+8;
+	box.h = (h+2)*voices.size()+8;
 	box.w = 0;
 	for (i=0; i<voices.size(); i++) {
 		int w = font->getTextWidth(voices[i].text);
@@ -1298,22 +1518,21 @@ void GMenu2X::contextMenu() {
 	box.x = halfX - box.w/2;
 	box.y = halfY - box.h/2;
 
-	SDL_Rect selbox = {box.x+4, 0, box.w-8, h};
+	SDL_Rect selbox = {box.x+4, 0, box.w-8, h+2};
 	long tickNow, tickStart = SDL_GetTicks();
 
 	Surface bg(s);
-	input.setWakeUpInterval(40); //25FPS
-
+	/*//Darken background
+	bg.box(0, 0, resX, resY, 0,0,0,150);
+	bg.box(box.x, box.y, box.w, box.h, skinConfColors[COLOR_MESSAGE_BOX_BG]);
+	bg.rectangle( box.x+2, box.y+2, box.w-4, box.h-4, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );*/
 	while (!close) {
 		tickNow = SDL_GetTicks();
 
-		selbox.y = box.y+4+h*sel;
+		selbox.y = box.y+4+(h+2)*sel;
 		bg.blit(s,0,0);
 
-		if (fadeAlpha<200)
-			fadeAlpha = intTransition(0,200,tickStart,500,tickNow);
-		else
-			input.setWakeUpInterval(0);
+		if (fadeAlpha<200) fadeAlpha = intTransition(0,200,tickStart,500,tickNow);
 		s->box(0, 0, resX, resY, 0,0,0,fadeAlpha);
 		s->box(box.x, box.y, box.w, box.h, skinConfColors[COLOR_MESSAGE_BOX_BG]);
 		s->rectangle( box.x+2, box.y+2, box.w-4, box.h-4, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );
@@ -1322,9 +1541,11 @@ void GMenu2X::contextMenu() {
 		//draw selection rect
 		s->box( selbox.x, selbox.y, selbox.w, selbox.h, skinConfColors[COLOR_MESSAGE_BOX_SELECTION] );
 		for (i=0; i<voices.size(); i++)
-			s->write( font, voices[i].text, box.x+12, box.y+h2+3+h*i, HAlignLeft, VAlignMiddle );
+			s->write( font, voices[i].text, box.x+12, box.y+h2+5+(h+2)*i, HAlignLeft, VAlignMiddle );
 		s->flip();
 
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+#else
 		//touchscreen
 		if (f200) {
 			ts.poll();
@@ -1334,7 +1555,7 @@ void GMenu2X::contextMenu() {
 				else if (ts.getX() >= selbox.x
 					  && ts.getX() <= selbox.x + selbox.w)
 					for (i=0; i<voices.size(); i++) {
-						selbox.y = box.y+4+h*i;
+						selbox.y = box.y+4+(h+2)*i;
 						if (ts.getY() >= selbox.y
 						 && ts.getY() <= selbox.y + selbox.h) {
 							voices[i].action();
@@ -1344,7 +1565,7 @@ void GMenu2X::contextMenu() {
 					}
 			} else if (ts.pressed() && ts.inRect(box)) {
 				for (i=0; i<voices.size(); i++) {
-					selbox.y = box.y+4+h*i;
+					selbox.y = box.y+4+(h+2)*i;
 					if (ts.getY() >= selbox.y
 					 && ts.getY() <= selbox.y + selbox.h) {
 						sel = i;
@@ -1353,15 +1574,13 @@ void GMenu2X::contextMenu() {
 				}
 			}
 		}
-
+#endif
 		input.update();
 		if ( input[MENU]    ) close = true;
 		if ( input[UP]      ) sel = max(0, sel-1);
 		if ( input[DOWN]    ) sel = min((int)voices.size()-1, sel+1);
 		if ( input[CONFIRM] ) { voices[sel].action(); close = true; }
 	}
-
-	input.setWakeUpInterval(0);
 }
 
 void GMenu2X::changeWallpaper() {
@@ -1442,25 +1661,15 @@ void GMenu2X::editLink() {
 	sd.addSetting(new MenuSettingMultiString( this, tr["Section"],              tr["The section this link belongs to"], &newSection, &menu->getSections() ));
 	sd.addSetting(new MenuSettingImage(       this, tr["Icon"],                 tr.translate("Select an icon for the link: $1", linkTitle.c_str(), NULL), &linkIcon, ".png,.bmp,.jpg,.jpeg", wd ));
 	sd.addSetting(new MenuSettingFile(        this, tr["Manual"],               tr["Select a graphic/textual manual or a readme"], &linkManual, ".man.png,.txt", wd ));
-
 	sd.addSetting(new MenuSettingInt(         this, tr.translate("Clock (default: $1)",strClock.c_str(), NULL), tr["Cpu clock frequency to set when launching this link"], &linkClock, 50, confInt["maxClock"] ));
 	sd.addSetting(new MenuSettingBool(        this, tr["Tweak RAM Timings"],    tr["This usually speeds up the application at the cost of stability"], &linkUseRamTimings ));
 	sd.addSetting(new MenuSettingInt(         this, tr["Volume (default: -1)"], tr["Volume to set for this link"], &linkVolume, -1, 100 ));
 	sd.addSetting(new MenuSettingString(      this, tr["Parameters"],           tr["Parameters to pass to the application"], &linkParams, diagTitle, diagIcon ));
-
 	sd.addSetting(new MenuSettingDir(         this, tr["Selector Directory"],   tr["Directory to scan for the selector"], &linkSelDir, wd ));
 	sd.addSetting(new MenuSettingBool(        this, tr["Selector Browser"],     tr["Allow the selector to change directory"], &linkSelBrowser ));
 	sd.addSetting(new MenuSettingString(      this, tr["Selector Filter"],      tr["Filter for the selector (Separate values with a comma)"], &linkSelFilter, diagTitle, diagIcon ));
 	sd.addSetting(new MenuSettingDir(         this, tr["Selector Screenshots"], tr["Directory of the screenshots for the selector"], &linkSelScreens, wd ));
 	sd.addSetting(new MenuSettingFile(        this, tr["Selector Aliases"],     tr["File containing a list of aliases for the selector"], &linkSelAliases, wd ));
-
-#	if defined(TARGET_WIZ) || defined(TARGET_CAANOO)
-	bool linkUseGinge = menu->selLinkApp()->getUseGinge();
-	string ginge_prep = getExePath() + "/ginge/ginge_prep";
-	if (fileExists(ginge_prep))
-		sd.addSetting(new MenuSettingBool(        this, tr["Use Ginge"],            tr["Compatibility layer for running GP2X applications"], &linkUseGinge ));
-#	endif
-
 	//G
 	sd.addSetting(new MenuSettingInt(         this, tr["Gamma (default: 0)"],   tr["Gamma value to set when launching this link"], &linkGamma, 0, 100 ));
 	sd.addSetting(new MenuSettingBool(        this, tr["Wrapper"],              tr["Explicitly relaunch GMenu2X after this link's execution ends"], &menu->selLinkApp()->needsWrapperRef() ));
@@ -1484,10 +1693,6 @@ void GMenu2X::editLink() {
 		menu->selLinkApp()->setVolume(linkVolume);
 		//G
 		menu->selLinkApp()->setGamma(linkGamma);
-
-#		if defined(TARGET_WIZ) || defined(TARGET_CAANOO)
-		menu->selLinkApp()->setUseGinge(linkUseGinge);
-#		endif
 
 		INFO("New Section: '%s'", newSection.c_str());
 
@@ -1620,7 +1825,11 @@ void GMenu2X::scanner() {
 	lineY += 26;
 
 	vector<string> files;
+#ifdef TARGET_Z2
+	scanPath(sdcard,&files);
+#else
 	scanPath("/mnt/sd",&files);
+#endif
 
 	//Onyl gph firmware has nand
 	if (fwType=="gph" && !f200) {
@@ -1701,7 +1910,7 @@ void GMenu2X::scanPath(string path, vector<string> *files) {
 			scanPath(filepath, files);
 		if (statRet != -1) {
 			ext = filepath.substr(filepath.length()-4,4);
-#if defined(TARGET_GP2X) || defined(TARGET_WIZ) || defined(TARGET_CAANOO)
+#if defined(TARGET_GP2X) || defined(TARGET_WIZ) || defined(TARGET_CAANOO) || defined(TARGET_Z2)
 			if (ext==".gpu" || ext==".gpe")
 #endif
 				files->push_back(filepath);
@@ -1712,7 +1921,34 @@ void GMenu2X::scanPath(string path, vector<string> *files) {
 }
 
 unsigned short GMenu2X::getBatteryLevel() {
+#if 1 /* ZIPIT_Z2 (IZ2S) */
+	FILE* pipe;
+	int batlvl;
+	
+	//	FILE* fb=fopen("/tmp/gmenu2x.battery", "a");
+	//	batlvl = system("acpower");
+	//	if (fb) fprintf(fb, "a=%d\n", batlvl);
+	//	if (fb) fclose(fb);
+
+	batlvl = system("acpower");
+	if (batlvl > 0) return 6; //AC Power
+	pipe = popen("batlvl", "r"); // This is really, really slow...(time > 1sec)
+	if (pipe == NULL) return 6; //AC Power
+	if (fscanf(pipe, "%d", &batlvl) != 1) 
+	  return 6; //AC Power
+	pclose(pipe); 
+
+	//	fb=fopen("/tmp/gmenu2x.battery", "a");
+	//	if (fb) fprintf(fb, "b=%d\n", batlvl);
+	//	if (fb) fclose(fb);
+
+	batlvl = batlvl / 16; // Convert from percent to 0..5
+	if (batlvl < 0) batlvl = 0;
+	if (batlvl > 5) batlvl = 5;
+	return batlvl;
+#else
 	if (batteryHandle<=0) return 6; //AC Power
+#endif
 
 #if defined(TARGET_GP2X)
 	if (f200) {
@@ -1858,12 +2094,23 @@ int GMenu2X::getVolume() {
 	int vol = -1;
 	unsigned long soundDev = open("/dev/mixer", O_RDONLY);
 	if (soundDev) {
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+		ioctl(soundDev, MIXER_READ(SOUND_MIXER_PHONEOUT), &vol);
+		close(soundDev);
+		if (vol != -1) {
+			//just return one channel , not both channels, they're hopefully the same anyways
+			vol = vol & 0xFF;
+			volumeScalerPhones = vol;
+			return vol;
+		}
+#else
 		ioctl(soundDev, SOUND_MIXER_READ_PCM, &vol);
 		close(soundDev);
 		if (vol != -1) {
 			//just return one channel , not both channels, they're hopefully the same anyways
 			return vol & 0xFF;
 		}
+#endif
 	}
 	return vol;
 }
@@ -1871,23 +2118,57 @@ int GMenu2X::getVolume() {
 void GMenu2X::setVolume(int vol) {
 	vol = constrain(vol,0,100);
 	unsigned long soundDev = open("/dev/mixer", O_RDWR);
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	volumeScalerPhones = vol;
+	if (soundDev) {
+		vol = (vol << 8) | vol;
+		ioctl(soundDev, MIXER_WRITE(SOUND_MIXER_PHONEOUT), &vol);
+		close(soundDev);
+	}
+#else
 	if (soundDev) {
 		vol = (vol << 8) | vol;
 		ioctl(soundDev, SOUND_MIXER_WRITE_PCM, &vol);
 		close(soundDev);
 	}
+#endif
 }
 
 void GMenu2X::setVolumeScaler(int scale) {
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	scale = constrain(scale,0,100);
+	volumeScalerNormal=scale;
+	unsigned long soundDev = open("/dev/mixer", O_WRONLY);
+	if (soundDev) {
+		ioctl(soundDev, SOUND_MIXER_WRITE_SPEAKER, &scale);
+		close(soundDev);
+	}
+#else
 	scale = constrain(scale,0,MAX_VOLUME_SCALE_FACTOR);
 	unsigned long soundDev = open("/dev/mixer", O_WRONLY);
 	if (soundDev) {
 		ioctl(soundDev, SOUND_MIXER_PRIVATE2, &scale);
 		close(soundDev);
 	}
+#endif
 }
 
 int GMenu2X::getVolumeScaler() {
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	int vol = -1;
+	unsigned long soundDev = open("/dev/mixer", O_RDONLY);
+	if (soundDev) {
+		ioctl(soundDev, SOUND_MIXER_READ_SPEAKER, &vol);
+		close(soundDev);
+		if (vol != -1) {
+			//just return one channel , not both channels, they're hopefully the same anyways
+			vol = vol & 0xFF;
+			volumeScalerNormal = vol;
+			return vol;
+		}
+	}
+	return vol;
+#else
 	int currentscalefactor = -1;
 	unsigned long soundDev = open("/dev/mixer", O_RDONLY);
 	if (soundDev) {
@@ -1895,18 +2176,26 @@ int GMenu2X::getVolumeScaler() {
 		close(soundDev);
 	}
 	return currentscalefactor;
+#endif
 }
 
 const string &GMenu2X::getExePath() {
 	if (path.empty()) {
+#if defined(TARGET_Z2)
+		// readlink returns -1 and empty buf.  uclibc bug?
+		// but gmenu2x hangs if we return a good path.  WTF?
+		path = "";
+#else
 		char buf[255];
 		memset(buf, 0, 255);
 		int l = readlink("/proc/self/exe", buf, 255);
 
 		path = buf;
+
 		path = path.substr(0,l);
 		l = path.rfind("/");
 		path = path.substr(0,l+1);
+#endif
 	}
 	return path;
 }
@@ -1916,6 +2205,31 @@ string GMenu2X::getDiskFree() {
 	string df = "";
 	struct statvfs b;
 
+#ifdef TARGET_Z2
+	string units = "MB";
+	string tunits = "MB";
+	int ret = statvfs(sdcard, &b);
+	if (ret==0) {
+		// Make sure that the multiplication happens in 64 bits.
+		unsigned long long total = ((unsigned long long)b.f_blocks * b.f_frsize) / 1048576;
+		if ((total == 0) && (statvfs("/mnt/ffs", &b) != 0))
+		  return df;
+		total = ((unsigned long long)b.f_blocks * b.f_frsize) / 1048576;
+		unsigned long long free = ((unsigned long long)b.f_bfree * b.f_bsize) / 1024;
+		if(free>2097152) // Anything over 2GB show in GB.
+			{ free /= 1048576; units="GB"; }
+		else if(free>1024) // MB
+			free /= 1024; 
+		else
+			units="KB";
+		if(total>2048) // Anything over 2GB show in GB.
+			{ total /= 1024; tunits="GB"; }
+		if ((units == tunits) || (free == 0))
+		  units = "";
+		ss << free << units << "/" << total << tunits;
+		ss >> df;
+	} else {WARNING("statvfs failed with error '%s'.\n", strerror(errno));}
+#else
 	int ret = statvfs("/mnt/sd", &b);
 	if (ret==0) {
 		unsigned long long free = (unsigned long long)(((unsigned long long)b.f_bfree * b.f_bsize) / 1048576.0);
@@ -1923,6 +2237,7 @@ string GMenu2X::getDiskFree() {
 		ss << free << "/" << total << "MB";
 		ss >> df;
 	} else WARNING("statvfs failed with error '%s'.", strerror(errno));
+#endif
 	return df;
 }
 

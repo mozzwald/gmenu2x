@@ -58,8 +58,8 @@ MenuSettingRGBA::MenuSettingRGBA(GMenu2X *gmenu2x, const string &name, const str
 void MenuSettingRGBA::draw(int y) {
 	this->y = y;
 	MenuSetting::draw(y);
-	gmenu2x->s->rectangle( 153, y+3, 11, 11, 0,0,0,255 );
-	gmenu2x->s->box( 154, y+4, 9, 9, value() );
+	gmenu2x->s->rectangle( 153, y+1, 11, 11, 0,0,0,255 );
+	gmenu2x->s->box( 154, y+2, 9, 9, value() );
 	gmenu2x->s->write( gmenu2x->font, "R: "+strR, 169, y+gmenu2x->font->getHalfHeight(), HAlignLeft, VAlignMiddle );
 	gmenu2x->s->write( gmenu2x->font, "G: "+strG, 205, y+gmenu2x->font->getHalfHeight(), HAlignLeft, VAlignMiddle );
 	gmenu2x->s->write( gmenu2x->font, "B: "+strB, 241, y+gmenu2x->font->getHalfHeight(), HAlignLeft, VAlignMiddle );
@@ -110,7 +110,7 @@ void MenuSettingRGBA::rightComponent()
 	selPart = constrain(selPart+1,0,3);
 }
 
-void MenuSettingRGBA::setR(unsigned short int r)
+void MenuSettingRGBA::setR(unsigned short r)
 {
 	_value->r = r;
 	stringstream ss;
@@ -118,7 +118,7 @@ void MenuSettingRGBA::setR(unsigned short int r)
 	ss >> strR;
 }
 
-void MenuSettingRGBA::setG(unsigned short int g)
+void MenuSettingRGBA::setG(unsigned short g)
 {
 	_value->g = g;
 	stringstream ss;
@@ -126,7 +126,7 @@ void MenuSettingRGBA::setG(unsigned short int g)
 	ss >> strG;
 }
 
-void MenuSettingRGBA::setB(unsigned short int b)
+void MenuSettingRGBA::setB(unsigned short b)
 {
 	_value->b = b;
 	stringstream ss;
@@ -134,7 +134,7 @@ void MenuSettingRGBA::setB(unsigned short int b)
 	ss >> strB;
 }
 
-void MenuSettingRGBA::setA(unsigned short int a)
+void MenuSettingRGBA::setA(unsigned short a)
 {
 	_value->a = a;
 	stringstream ss;
@@ -142,7 +142,7 @@ void MenuSettingRGBA::setA(unsigned short int a)
 	ss >> strA;
 }
 
-void MenuSettingRGBA::setSelPart(unsigned short int value)
+void MenuSettingRGBA::setSelPart(unsigned short value)
 {
 	switch (selPart) {
 		default: case 0: setR(value); break;
@@ -157,7 +157,7 @@ RGBAColor MenuSettingRGBA::value()
 	return *_value;
 }
 
-unsigned short int MenuSettingRGBA::getSelPart()
+unsigned short MenuSettingRGBA::getSelPart()
 {
 	switch (selPart) {
 		default: case 0: return value().r;

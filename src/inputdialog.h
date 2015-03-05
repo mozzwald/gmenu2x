@@ -53,6 +53,12 @@ class InputDialog : protected Dialog {
 private:
 	InputManager &inputMgr;
 	Touchscreen &ts;
+#ifdef ZIPIT_Z2 /* Remove virtual kbd */
+	string title, text, icon;
+	string input;
+
+	void backspace();
+#else
 	int selRow, selCol;
 	bool close, ok;
 	string title, text, icon;
@@ -71,7 +77,7 @@ private:
 
 	int drawVirtualKeyboard();
 	void setKeyboard(int);
-
+#endif
 public:
 	InputDialog(GMenu2X *gmenu2x, InputManager &inputMgr, Touchscreen &ts, const string &text, const string &startvalue="", const string &title="", const string &icon="");
 

@@ -19,6 +19,10 @@
  ***************************************************************************/
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined(TARGET_Z2)
+#include <sys/ioctl.h>
+#include <signal.h>
+#endif
 #include <unistd.h>
 
 #include <fstream>
@@ -34,8 +38,8 @@ using namespace std;
 
 LinkApp::LinkApp(GMenu2X *gmenu2x_, InputManager &inputMgr_,
 				 const char* linkfile)
-	: Link(gmenu2x_),
-	  inputMgr(inputMgr_)
+	: Link(gmenu2x_)
+	, inputMgr(inputMgr_)
 {
 	manual = "";
 	file = linkfile;
@@ -50,7 +54,6 @@ LinkApp::LinkApp(GMenu2X *gmenu2x_, InputManager &inputMgr_,
 	icon = iconPath = "";
 	selectorbrowser = false;
 	useRamTimings = false;
-	useGinge = false;
 	workdir = "";
 
 	string line;
@@ -77,10 +80,10 @@ LinkApp::LinkApp(GMenu2X *gmenu2x_, InputManager &inputMgr_,
 			workdir = value;
 		} else if (name == "manual") {
 			manual = value;
-		} else if (name == "wrapper" && value=="true") {
-			wrapper = true;
-		} else if (name == "dontleave" && value=="true") {
-			dontleave = true;
+		} else if (name == "wrapper") {
+			if (value=="true") wrapper = true;
+		} else if (name == "dontleave") {
+			if (value=="true") dontleave = true;
 		} else if (name == "clock") {
 			setClock( atoi(value.c_str()) );
 		//G
@@ -90,12 +93,10 @@ LinkApp::LinkApp(GMenu2X *gmenu2x_, InputManager &inputMgr_,
 			setVolume( atoi(value.c_str()) );
 		} else if (name == "selectordir") {
 			setSelectorDir( value );
-		} else if (name == "selectorbrowser" && value=="true") {
-			selectorbrowser = true;
-		} else if (name == "useramtimings" && value=="true") {
-			useRamTimings = true;
-		} else if (name == "useginge" && value=="true") {
-			useGinge = true;
+		} else if (name == "selectorbrowser") {
+			if (value=="true") selectorbrowser = true;
+		} else if (name == "useramtimings") {
+			if (value=="true") useRamTimings = true;
 		} else if (name == "selectorfilter") {
 			setSelectorFilter( value );
 		} else if (name == "selectorscreens") {
@@ -148,10 +149,12 @@ void LinkApp::setClock(int mhz) {
 	iclock = constrain(mhz,50,325);
 #elif defined(TARGET_WIZ) || defined(TARGET_CAANOO)
 	iclock = constrain(mhz,50,900);
+#elif defined(TARGET_Z2)
+	iclock = constrain(mhz,50,416);
 #endif
 	stringstream ss;
 	sclock = "";
-	ss << iclock << "Mhz";
+	ss << iclock << "MHz";
 	ss >> sclock;
 
 	edited = true;
@@ -199,7 +202,7 @@ void LinkApp::setGamma(int gamma) {
 // /G
 
 bool LinkApp::targetExists() {
-#if !defined(TARGET_GP2X) && !defined(TARGET_WIZ) && !defined(TARGET_CAANOO)
+#if !defined(TARGET_GP2X) && !defined(TARGET_WIZ) && !defined(TARGET_CAANOO) && !defined(TARGET_Z2) 
 	return true; //For displaying elements during testing on pc
 #endif
 
@@ -224,7 +227,6 @@ bool LinkApp::save() {
 		if (manual!=""         ) f << "manual="          << manual          << endl;
 		if (iclock!=0          ) f << "clock="           << iclock          << endl;
 		if (useRamTimings      ) f << "useramtimings=true"                  << endl;
-		if (useGinge           ) f << "useginge=true"                       << endl;
 		if (ivolume>0          ) f << "volume="          << ivolume         << endl;
 		//G
 		if (igamma!=0          ) f << "gamma="           << igamma          << endl;
@@ -236,6 +238,9 @@ bool LinkApp::save() {
 		if (wrapper            ) f << "wrapper=true"                        << endl;
 		if (dontleave          ) f << "dontleave=true"                      << endl;
 		f.close();
+#if defined(TARGET_Z2)
+		sync();
+#endif
 		return true;
 	} else
 		ERROR("Error while opening the file '%s' for write.", file.c_str());
@@ -322,6 +327,23 @@ void LinkApp::showManual() {
 	// Txt manuals and readmes
 	vector<string> txtman;
 
+#ifdef ZIPIT_Z2
+	string filename = manual;
+	// Strip HTML tags for readme.
+	if (manual.substr(manual.size()-5,5)==".html") {
+	  string sedcmd = "sed -e 's/<[^>]*>/ /g' -e 's/<[^>]*>//g' ";
+	  filename = "/tmp/gmenu2x.readme.txt";
+	  sedcmd += manual + " > " +filename;
+	  system(sedcmd.c_str());
+	}
+	extern int readtextfile(string filename, vector<string> &txtman);
+
+	if (readtextfile(filename, txtman)) {
+		// ZIPIT_Z2 // Save space -- Skip Manual file format.
+		TextDialog td(gmenu2x, getTitle(), "ReadMe", getIconPath(), &txtman);
+		td.exec();
+	}
+#else
 	string line;
 	ifstream infile(manual.c_str(), ios_base::in);
 	if (infile.is_open()) {
@@ -337,6 +359,7 @@ void LinkApp::showManual() {
 			td.exec();
 		}
 	}
+#endif
 }
 
 void LinkApp::selector(int startSelection, const string &selectorDir) {
@@ -352,7 +375,7 @@ void LinkApp::selector(int startSelection, const string &selectorDir) {
 void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 	drawRun();
 	save();
-#if !defined(TARGET_GP2X) && !defined(TARGET_WIZ) && !defined(TARGET_CAANOO)
+#if !defined(TARGET_GP2X) && !defined(TARGET_WIZ) && !defined(TARGET_CAANOO) && !defined(TARGET_Z2) 
 	//delay for testing
 	SDL_Delay(1000);
 #endif
@@ -362,6 +385,10 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 	if (!wd.empty())
 		chdir(wd.c_str());
 
+#ifdef TARGET_Z2 /* dontleave params bugfix */
+	// Bug fix.  Gotta restore original params for multiple dontleave calls.
+	string origParams = params;
+#endif
 	//selectedFile
 	if (selectedFile!="") {
 		string selectedFileExtension;
@@ -380,7 +407,11 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 		if (params=="") {
 			params = cmdclean(dir+selectedFile);
 		} else {
+#ifdef TARGET_Z2 /* dontleave params bugfix */
+			// Bug fix.  Gotta restore original params for multiple dontleave calls.
+#else
 			string origParams = params;
+#endif
 			params = strreplace(params,"[selFullPath]",cmdclean(dir+selectedFile));
 			params = strreplace(params,"[selPath]",cmdclean(dir));
 			params = strreplace(params,"[selFile]",cmdclean(selectedFileName));
@@ -391,8 +422,12 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 
 	if (useRamTimings)
 		gmenu2x->applyRamTimings();
+#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+	// Keep the current mixer volume settings and ignore the linkApp volume setting.
+#else
 	if (volume()>=0)
 		gmenu2x->setVolume(volume());
+#endif
 
 	INFO("Executing '%s' (%s %s)", title.c_str(), exec.c_str(), params.c_str());
 
@@ -411,12 +446,8 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 			chmod( command.c_str(), newstat.st_mode );
 	} // else, well.. we are no worse off :)
 
+#if !defined(TARGET_Z2) 
 	if (params!="") command += " " + params;
-	if (useGinge) {
-		string ginge_prep = gmenu2x->getExePath() + "/ginge/ginge_prep";
-		if (fileExists(ginge_prep))
-			command = cmdclean(ginge_prep) + " " + command;
-	}
 	if (gmenu2x->confInt["outputLogs"]) command += " &> " + cmdclean(gmenu2x->getExePath()) + "/log.txt";
 	if (wrapper) command += "; sync & cd "+cmdclean(gmenu2x->getExePath())+"; exec ./gmenu2x";
 	if (dontleave) {
@@ -439,9 +470,117 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 		chdir(gmenu2x->getExePath().c_str());
 		execlp("./gmenu2x", "./gmenu2x", NULL);
 	}
+#else // ZIPIT_Z2
+	extern char *progpath;
+	string filepath = progpath; //gmenu2x->getExePath();
 
+	// Trap INT and TERM signals or they will kill this wrapper before the return to gmenu. 
+	command = "trap - INT TERM; " + cmdclean(exec);
+	if (params!="") command += " " + params;
+	//if (gmenu2x->confInt["outputLogs"]) command += " &> " + cmdclean(gmenu2x->getExePath()) + "/log.txt";
+	if (gmenu2x->confInt["outputLogs"]) command += " &> " + filepath + "/log.txt";
+	// Force uclibc to end the suspended parent process with a killall.
+	//if (wrapper) command += "; sync & cd "+cmdclean(gmenu2x->getExePath())+"; killall -9 gmenu2x; exec ./gmenu2x";
+	if (wrapper) command += "; sync & cd "+ cmdclean(filepath) +"; killall -9 gmenu2x; exec ./gmenu2x";
+	if (dontleave) {
+	        // Bug fix.  Gotta restore original params for multiple dontleave calls.
+		params = origParams;
+		system(command.c_str());
+	} else {
+		if (gmenu2x->confInt["saveSelection"] && (gmenu2x->confInt["section"]!=gmenu2x->menu->selSectionIndex() || gmenu2x->confInt["link"]!=gmenu2x->menu->selLinkIndex()))
+			gmenu2x->writeConfig();
+		if (gmenu2x->fwType == "open2x" && gmenu2x->savedVolumeMode != gmenu2x->volumeMode)
+			gmenu2x->writeConfigOpen2x();
+		if (selectedFile=="")
+			gmenu2x->writeTmp();
+		gmenu2x->quit();
+		if (clock()!=gmenu2x->confInt["menuClock"])
+			gmenu2x->setClock(clock());
+		if (gamma()!=0 && gamma()!=gmenu2x->confInt["gamma"])
+			gmenu2x->setGamma(gamma());
 
-	chdir(gmenu2x->getExePath().c_str());
+		// ---- Got this nice fix from the nanonote git sources ----
+		/* Make the terminal we're connected to (via stdin/stdout) our
+      		   contolling terminal again.  Else many console programs are
+      		   not going to work correctly.  Actually this would not be
+      		   necessary, if SDL correctly restored terminal state after
+      		   SDL_Quit(). */
+		int pid = setsid();
+		//ioctl(1, TIOCSCTTY, STDOUT_FILENO);
+		ioctl(0, TIOCSCTTY, STDOUT_FILENO);
+
+		int pgid = tcgetpgrp(STDOUT_FILENO);
+		signal(SIGTTOU, SIG_IGN);
+		tcsetpgrp(STDOUT_FILENO, pgid);
+		// ---- Got this nice fix from the nanonote git sources ----
+
+		// ---- Try to avoid NODELAY warnings and bad nonblocking behavior ----
+		fcntl(0, F_SETFL, fcntl(0, F_GETFL) & ~O_NONBLOCK);
+
+		execlp("/bin/sh","/bin/sh","-c",command.c_str(),NULL);
+
+		//if execution continues then something went wrong and as we already called SDL_Quit we cannot continue
+		//try relaunching gmenu2x
+		//chdir(gmenu2x->getExePath().c_str());
+		chdir(filepath.c_str());
+		execlp("./gmenu2x", "./gmenu2x", NULL);
+	}
+#endif
+#if 0
+	if (params!="") command += " " + params;
+	if (gmenu2x->confInt["outputLogs"]) command += " &> " + cmdclean(gmenu2x->getExePath()) + "/log.txt";
+	// dontleave does not call gmenu2x->quit so SDL still owns the screen.  Console progs will be offscreen.
+	//if (wrapper && !dontleave) command += "; sync & cd "+cmdclean(gmenu2x->getExePath())+"; exec ./gmenu2x";
+	// Dont use exec on the gmenu2x call for ZIPIT_Z2 running IZ2S
+	if (wrapper && !dontleave) command += "; sync; cd "+cmdclean(gmenu2x->getExePath())+"; ./gmenu2x";
+	if (dontleave) {
+		system(command.c_str());
+	} else {
+		if (gmenu2x->confInt["saveSelection"] && (gmenu2x->confInt["section"]!=gmenu2x->menu->selSectionIndex() || gmenu2x->confInt["link"]!=gmenu2x->menu->selLinkIndex()))
+			gmenu2x->writeConfig();
+		if (gmenu2x->fwType == "open2x" && gmenu2x->savedVolumeMode != gmenu2x->volumeMode)
+			gmenu2x->writeConfigOpen2x();
+		if (selectedFile=="")
+			gmenu2x->writeTmp();
+		gmenu2x->quit();
+		if (clock()!=gmenu2x->confInt["menuClock"])
+			gmenu2x->setClock(clock());
+		if (gamma()!=0 && gamma()!=gmenu2x->confInt["gamma"])
+			gmenu2x->setGamma(gamma());
+
+		// Apparently the uclibc execlp() fn in IZ2S merely suspends the parent process
+		// until after the child process exits, then it lets the parent die.
+		// This is trouble for wrapper because the child execs a new gmenu2x instead of exiting.
+		if (wrapper)
+		{
+		  // Can I add a fork to allow me kill off the parent, or is that broken too?
+		  //		  int pid = fork(); // May create zombies if I dont wait on the child.  Oh well.
+		  //		  if (pid == 0)
+
+			char wrapfile[] = "/tmp/gmenu2x.XXXXXX";
+			int fd = mkstemp(wrapfile);
+			fchmod(fd, 0744);
+			write(fd, "#!/bin/sh\n", strlen("#!/bin/sh\n"));
+			write(fd, command.c_str(), strlen(command.c_str()));
+			write(fd, "\n", strlen("\n"));
+			fsync(fd);
+			close(fd);
+			sleep(1);
+			// execlp("/bin/sh","/bin/sh","-c",wrapfile,NULL); // 
+			//execlp(wrapfile,wrapfile,NULL); // Weird, busybox reports "applet not found".
+			execlp(wrapfile,wrapfile,NULL); 
+		}
+		else
+			execlp("/bin/sh","/bin/sh","-c",command.c_str(),NULL);
+
+		// If execution continues then we are the parent, or something went wrong.
+		// If not parent, we already called SDL_Quit so we cannot continue.  Just quit.
+		exit(0);
+	}
+#endif
+
+	//chdir(gmenu2x->getExePath().c_str());
+	chdir(filepath.c_str());
 }
 
 const string &LinkApp::getExec() {
@@ -519,15 +658,6 @@ bool LinkApp::getUseRamTimings() {
 
 void LinkApp::setUseRamTimings(bool value) {
 	useRamTimings = value;
-	edited = true;
-}
-
-bool LinkApp::getUseGinge() {
-	return useGinge;
-}
-
-void LinkApp::setUseGinge(bool value) {
-	useGinge = value;
 	edited = true;
 }
 

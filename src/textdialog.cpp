@@ -120,13 +120,21 @@ void TextDialog::exec() {
 		gmenu2x->input.update();
 		if ( gmenu2x->input[UP  ] && firstRow>0 ) firstRow--;
 		if ( gmenu2x->input[DOWN] && firstRow+rowsPerPage<text->size() ) firstRow++;
+#ifdef ZIPIT_Z2 // Allow Prev, Next buttons to page up, down in text dialogs.
+		if (( gmenu2x->input[PAGEUP] ) || ( gmenu2x->input[SECTION_PREV] )|| ( gmenu2x->input[LEFT] )) {
+#else
 		if ( gmenu2x->input[PAGEUP] ) {
+#endif
 			if (firstRow>=rowsPerPage-1)
 				firstRow-= rowsPerPage-1;
 			else
 				firstRow = 0;
 		}
+#ifdef ZIPIT_Z2 // Allow Prev, Next buttons to page up, down in text dialogs.
+		if (( gmenu2x->input[PAGEDOWN] ) || ( gmenu2x->input[SECTION_NEXT] ) || ( gmenu2x->input[RIGHT] )) {
+#else
 		if ( gmenu2x->input[PAGEDOWN] ) {
+#endif
 			if (firstRow+rowsPerPage*2-1<text->size())
 				firstRow+= rowsPerPage-1;
 			else
