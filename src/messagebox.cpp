@@ -20,6 +20,7 @@
 
 #include <SDL.h>
 #include <SDL_gfxPrimitives.h>
+#include <unistd.h>
 
 #include "messagebox.h"
 

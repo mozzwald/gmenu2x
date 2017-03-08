@@ -106,7 +106,7 @@ bool SettingsDialog::exec() {
 		voices[sel]->handleTS();
 
 		inputMgr.update();
-		if      ( inputMgr[SETTINGS] ) action = SD_ACTION_CLOSE;
+		if      ( inputMgr[CANCEL]   ) action = SD_ACTION_CLOSE;
 		else if ( inputMgr[UP      ] ) action = SD_ACTION_UP;
 		else if ( inputMgr[DOWN    ] ) action = SD_ACTION_DOWN;
 		voices[sel]->manageInput();

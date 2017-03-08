@@ -24,6 +24,7 @@
 #include "inputdialog.h"
 #ifdef ZIPIT_Z2 /* Remove virtual kbd */
 #include <stdlib.h>
+#include <unistd.h>
 #endif
 
 using namespace std;

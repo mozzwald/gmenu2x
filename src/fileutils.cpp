@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iterator>
 #include <sstream>
+#include <unistd.h>
 #include "fileutils.h"
 #include "def.h"
 #include "popdialog.h"
@@ -191,7 +192,7 @@ void File_utils::executeFile(const std::string &p_file)
     // Quit
     SDL_utils::hastalavista();
     // Execute file
-#if 1 // ZIPIT_Z2
+#if 0 // ZIPIT_Z2
     extern char *progpath;
     std::string l_exePath = progpath; //gmenu2x->getExePath();
     std::string command = "trap - INT TERM; " + l_command;
@@ -215,7 +216,7 @@ void File_utils::executeFile(const std::string &p_file)
 const std::string File_utils::getSelfExecutionPath(void)
 {
     // Get execution path
-#if 1 // ZIPIT_Z2
+#if 0 // ZIPIT_Z2
     extern char *progpath;
     std::string l_exePath = progpath; //gmenu2x->getExePath();
     return l_exePath;

@@ -1,16 +1,19 @@
-TARGET=iz2s
+TARGET=zipit
+STAGING_DIR=/media/zipit/zipit/openwrt-zipit-new/staging_dir/target-arm_xscale_musl-1.1.14_eabi
+TOOLCHAIN_DIR=/media/zipit/zipit/openwrt-zipit-new/staging_dir/toolchain-arm_xscale_gcc-5.3.0_musl-1.1.14_eabi/
 
-CC = gcc
-CXX = g++
+CC = arm-openwrt-linux-gcc
+CXX = arm-openwrt-linux-g++
 #LD = g++
-LD = gcc
-STRIP = strip
+LD = arm-openwrt-linux-gcc
+STRIP = arm-openwrt-linux-strip
 
 #CFLAGS = -I"/usr/include" `sdl-config --cflags` -DTARGET_PC -DTARGET=$(TARGET) -DLOG_LEVEL=4 -Wall -Wundef -Wno-deprecated -Wno-unknown-pragmas -Wno-format -pg -O0 -g3
 #CFLAGS = -I"/usr/include" `sdl-config --cflags` -DZIPIT_Z2 -DTARGET_Z2 -DTARGET=$(TARGET) -DLOG_LEVEL=4 -Wall -Wundef -Wno-deprecated -Wno-unknown-pragmas -Wno-format -O3 -g -fno-exceptions #-fno-rtti
-CFLAGS = -I"/usr/include" `sdl-config --cflags` -DZIPIT_Z2 -DTARGET_Z2 -DTARGET=$(TARGET) -DLOG_LEVEL=0 -Wall -Wundef -Wno-deprecated -Wno-unknown-pragmas -Wno-format -Os -s -fno-exceptions #-fno-rtti
+CFLAGS = -I"$(STAGING_DIR)/usr/include" `$(STAGING_DIR)/host/bin/sdl-config --cflags` -DZIPIT_Z2 -DTARGET_Z2 -DTARGET=$(TARGET) -DLOG_LEVEL=0 -Wall -Wundef -Wno-deprecated -Wno-unknown-pragmas -Wno-format -O0 -g -s -fno-exceptions #-fno-rtti
 CXXFLAGS = $(CFLAGS)
-LDFLAGS = -L"/usr/lib" `sdl-config --libs` -lfreetype -lSDL_image -lSDL_ttf -lSDL_gfx -ljpeg -lpng12 -lz #-lSDL_gfx
+LDFLAGS = -L"$(STAGING_DIR)/usr/lib" `$(STAGING_DIR)/host/bin/sdl-config --libs` -lfreetype -lSDL_image -lSDL_ttf -lSDL_gfx -ljpeg -lpng12 -lz #-lSDL_gfx
+#-L"$(TOOLCHAIN_DIR)/lib" 
 
 OBJDIR = objs/$(TARGET)
 DISTDIR = dist/$(TARGET)/gmenu2x
@@ -30,7 +33,7 @@ dir:
 
 debug: $(OBJS)
 	@echo "Linking gmenu2x-debug..."
-	$(LD) -o $(APPNAME)-debug $(LDFLAGS) $(OBJS) /usr/lib/libstdc++.a
+	$(LD) -o $(APPNAME)-debug $(LDFLAGS) $(OBJS) $(TOOLCHAIN_DIR)/lib/libstdc++.a
 
 #	$(CXX) -o $(APPNAME)-debug $(LDFLAGS) $(OBJS)
 
@@ -42,12 +45,12 @@ clean:
 
 dist: dir shared
 	install -m755 -D $(APPNAME)-debug $(DISTDIR)/gmenu2x
-	install -m644 assets/$(TARGET)/input.conf $(DISTDIR)
-	install -m755 -d $(DISTDIR)/sections/applications $(DISTDIR)/sections/emulators $(DISTDIR)/sections/games $(DISTDIR)/sections/settings
-	install -m644 -D README.rst $(DISTDIR)/README.txt
-	install -m644 -D COPYING $(DISTDIR)/COPYING
-	install -m644 -D ChangeLog $(DISTDIR)/ChangeLog
-	cp -R assets/skins assets/translations $(DISTDIR)
+#	install -m644 assets/$(TARGET)/input.conf $(DISTDIR)
+#	install -m755 -d $(DISTDIR)/sections/applications $(DISTDIR)/sections/emulators $(DISTDIR)/sections/games $(DISTDIR)/sections/settings
+#	install -m644 -D README.rst $(DISTDIR)/README.txt
+#	install -m644 -D COPYING $(DISTDIR)/COPYING
+#	install -m644 -D ChangeLog $(DISTDIR)/ChangeLog
+	cp -R assets/$(TARGET)/* $(DISTDIR)
 
 -include $(patsubst src/%.cpp, $(OBJDIR)/src/%.d, $(SOURCES))
 

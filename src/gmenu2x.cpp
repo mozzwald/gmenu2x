@@ -72,6 +72,8 @@
 
 #include <sys/mman.h>
 
+#define LINE_BUFSIZE 128
+
 const char *CARD_ROOT = "/mnt/"; //Note: Add a trailing /!
 const int CARD_ROOT_LEN = 5;
 
@@ -119,8 +121,9 @@ static void quit_all(int err) {
 }
 
 #if defined(TARGET_Z2)
-char *progpath = "/mnt/ffs/gmenu2x/";
-const char sdcard[] = "/mnt/sd0/";
+//char *progpath = "/mnt/ffs/gmenu2x/";
+char *progpath = "./";
+const char sdcard[] = "/";
 #endif
 
 #ifdef TARGET_Z2
@@ -913,9 +916,9 @@ void GMenu2X::main() {
 
 		//Sections
 		sectionsCoordX = halfX - (constrain((uint)menu->getSections().size(), 0 , linkColumns) * skinConfInt["linkWidth"]) / 2;
-#ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar.
+// #ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar.
 		
-#else
+// #else
 		if (menu->firstDispSection()>0)
 			sc.skinRes("imgs/l_enabled.png")->blit(s,0,0);
 		else
@@ -924,7 +927,7 @@ void GMenu2X::main() {
 			sc.skinRes("imgs/r_enabled.png")->blit(s,resX-10,0);
 		else
 			sc.skinRes("imgs/r_disabled.png")->blit(s,resX-10,0);
-#endif
+// #endif
 		for (i=menu->firstDispSection(); i<menu->getSections().size() && i<menu->firstDispSection()+linkColumns; i++) {
 			string sectionIcon = "skin:sections/"+menu->getSections()[i]+".png";
 			x = (i-menu->firstDispSection())*skinConfInt["linkWidth"]+sectionsCoordX;
@@ -1055,8 +1058,10 @@ void GMenu2X::main() {
 		if (tickNow-tickBattery >= 60000) {
 			tickBattery = tickNow;
 			unsigned short battlevel = getBatteryLevel();
-			if (battlevel>5) {
-				batteryIcon = "imgs/battery/ac.png";
+			if (battlevel == 6) {
+				batteryIcon = "imgs/battery/ac_chrg.png";
+			} else if (battlevel == 7){
+				batteryIcon = "imgs/battery/ac_full.png";
 			} else {
 				ss.clear();
 				ss << battlevel;
@@ -1920,32 +1925,70 @@ void GMenu2X::scanPath(string path, vector<string> *files) {
 	closedir(dirp);
 }
 
+#ifdef ZIPIT_Z2
+enum POWERSTATE {
+	AC_CHRG,
+	AC_FULL,
+	AC_DISCHRG,
+	DC_POWER
+};
+
+POWERSTATE getPwrState() {
+
+	POWERSTATE pwrstate=DC_POWER;
+	FILE* acHandle = fopen("/sys/class/power_supply/Z2/status", "r");
+
+	if (acHandle){
+		char acVal[32];
+		memset(acVal, 0, sizeof(acVal));
+		fread(acVal, 1, sizeof(acVal), acHandle);
+
+		if (strncmp(acVal, "Charging", strlen("Charging")) == 0)
+			pwrstate=AC_CHRG;
+
+		if (strncmp(acVal, "Full", strlen("Full")) == 0)
+			pwrstate=AC_FULL;
+
+		if (strncmp(acVal, "Discharging", strlen("Discharging")) == 0)
+			pwrstate=AC_DISCHRG;
+
+		fclose(acHandle);
+	}
+
+	return pwrstate;
+}
+#endif
+
 unsigned short GMenu2X::getBatteryLevel() {
-#if 1 /* ZIPIT_Z2 (IZ2S) */
-	FILE* pipe;
-	int batlvl;
-	
-	//	FILE* fb=fopen("/tmp/gmenu2x.battery", "a");
-	//	batlvl = system("acpower");
-	//	if (fb) fprintf(fb, "a=%d\n", batlvl);
-	//	if (fb) fclose(fb);
+#ifdef ZIPIT_Z2
+	if (getPwrState() == AC_CHRG) return 6;
 
-	batlvl = system("acpower");
-	if (batlvl > 0) return 6; //AC Power
-	pipe = popen("batlvl", "r"); // This is really, really slow...(time > 1sec)
-	if (pipe == NULL) return 6; //AC Power
-	if (fscanf(pipe, "%d", &batlvl) != 1) 
-	  return 6; //AC Power
-	pclose(pipe); 
+	if (getPwrState() == AC_FULL) return 7;
 
-	//	fb=fopen("/tmp/gmenu2x.battery", "a");
-	//	if (fb) fprintf(fb, "b=%d\n", batlvl);
-	//	if (fb) fclose(fb);
+	char line[LINE_BUFSIZE];
+	vector<string> scriptOutput;
 
-	batlvl = batlvl / 16; // Convert from percent to 0..5
-	if (batlvl < 0) batlvl = 0;
-	if (batlvl > 5) batlvl = 5;
-	return batlvl;
+	/* Get a pipe where the output from the scripts comes in */
+	FILE* pipe = popen("/usr/bin/battlevel", "r");
+	if (pipe == NULL) return 6; /* return with exit code indicating error */
+
+	/* Read script output from the pipe... for this one there should only be one line */
+	while (fgets(line, LINE_BUFSIZE, pipe) != NULL) {
+		scriptOutput.push_back(line);
+	}
+
+	pclose(pipe); /* Close the pipe */
+
+	int volt_val = 0;
+	if(scriptOutput.size())
+		volt_val = atoi(scriptOutput[0].c_str());
+	if (volt_val>90) return 5;
+	else if (volt_val>70) 	return 4;
+	else if (volt_val>50) 	return 3;
+	else if (volt_val>30) 	return 2;
+	else if (volt_val>1) 	return 1;
+	else return 0;
+
 #else
 	if (batteryHandle<=0) return 6; //AC Power
 #endif
@@ -2006,7 +2049,6 @@ void GMenu2X::setInputSpeed() {
 	input.setInterval(30,  CANCEL);
 	input.setInterval(500, SETTINGS);
 	input.setInterval(500, MENU);
-	input.setInterval(300, CANCEL);
 	input.setInterval(300, MANUAL);
 	input.setInterval(200, INC);
 	input.setInterval(200, DEC);
