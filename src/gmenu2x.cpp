@@ -899,9 +899,7 @@ void GMenu2X::main() {
 	uint nloops = 0;
 	long tickBattery = -60000, tickNow;
 	string batteryIcon = "imgs/battery/0.png";
-	unsigned short battlevel = getBatteryLevel();
 #ifdef TARGET_Z2
-	long tickWifi = -10000;
 	string wifiIcon = "imgs/wifi/off.png";
 #endif
 	stringstream ss;
@@ -912,6 +910,8 @@ void GMenu2X::main() {
 	btnContextMenu->setPosition(resX-38, bottomBarIconY);
 	btnContextMenu->setAction(MakeDelegate(this, &GMenu2X::contextMenu));
 
+	nbattlevel = getBatteryLevel();
+	nwifilevel = getWiFiLevel();
 	bRedraw = true;
 
 	while (!quit) {
@@ -1012,62 +1012,29 @@ void GMenu2X::main() {
 			}
 #endif
 
-#if 1 /* ZIPIT_Z2 (IZ2S) */
-			// No touchscreen so show inet icon instead of btnContextMenu
-			if (tickNow-tickWifi >= 10000) {
-				tickWifi = tickNow;
-
-				char *eth0start;
-				FILE *devfd;
-				int level=0, noise;
-				char buf[256];
-				static int bufsize = 255;
-			
-				devfd = fopen("/proc/net/wireless", "r");
-			
-				// ignore the first two lines of the file
-				fgets(buf, bufsize, devfd);
-				fgets(buf, bufsize, devfd);
-			
-				while (fgets(buf, bufsize, devfd)) {
-				  if ((eth0start = strstr(buf, "eth0:")) != NULL) {
-				    sscanf(eth0start + 6, "%*d %*d %d  %d", &level, &noise);
-				    level -= noise;
-				    if (level < 0)
-				      level = 0;
-				    break;
-				  }
-				}
-				fclose(devfd);
-			
-				if (level == 0){
-					wifiIcon = "imgs/wifi/off.png";
-				}
-				else{
-					level = level / 15 +1;
-					if (level > 5) level = 5;
-					ss.clear();
-					ss << level;
-					ss >> wifiIcon;
-					wifiIcon = "imgs/wifi/"+wifiIcon+".png";
-				}
-				//Surface inetS(wifiIcon, confStr["skin"]);
-				//inetS.blit( sc["bgmain"], resX-38, bottomBarIconY );
-			}
-			sc.skinRes(wifiIcon)->blit( s, resX-38, bottomBarIconY );
-#else
+#ifdef TOUCHSCREEN
 			if (f200) {
 				btnContextMenu->paint();
 			}
 #endif
+			// draw wifi status/signal level
+			if (nwifilevel == 0)
+				wifiIcon = "imgs/wifi/off.png";
+			else {
+				char wifilevel[3];
+				snprintf(wifilevel, sizeof(wifilevel), "%d", nwifilevel);
+				wifiIcon = "imgs/wifi/"+string(wifilevel)+".png";
+			}
+			sc.skinRes(wifiIcon)->blit( s, resX-19*3, bottomBarIconY );
+
 			// draw battery status
-			if (battlevel == 6) {
+			if (nbattlevel == 6) {
 				batteryIcon = "imgs/battery/ac_chrg.png";
-			} else if (battlevel == 7){
+			} else if (nbattlevel == 7){
 				batteryIcon = "imgs/battery/ac_full.png";
 			} else {
 				ss.clear();
-				ss << battlevel;
+				ss << nbattlevel;
 				ss >> batteryIcon;
 				batteryIcon = "imgs/battery/"+batteryIcon+".png";
 			}
@@ -1102,8 +1069,7 @@ void GMenu2X::main() {
 			bRedraw = false;
 		} //end bRedraw
 
-#if 1 /* ZIPIT_Z2 (IZ2S) */
-#else
+#ifdef TOUCHSCREEN
 		//touchscreen
 		if (f200) {
 			ts.poll();
@@ -1215,7 +1181,8 @@ void GMenu2X::main() {
 			/* Do stuff here that should be checked every once in a while:
 			 * cpu speed, battery level, wifi level, clock, anything else
 			 */
-			battlevel = getBatteryLevel();
+			nbattlevel = getBatteryLevel();
+			nwifilevel = getWiFiLevel();
 			bRedraw = true;
 			nloops=0;
 		}
@@ -1564,8 +1531,7 @@ void GMenu2X::contextMenu() {
 			s->write( font, voices[i].text, box.x+12, box.y+h2+5+(h+2)*i, HAlignLeft, VAlignMiddle );
 		s->flip();
 
-#if 1 /* ZIPIT_Z2 (IZ2S) */
-#else
+#ifdef TOUCHSCREEN
 		//touchscreen
 		if (f200) {
 			ts.poll();
@@ -1596,6 +1562,7 @@ void GMenu2X::contextMenu() {
 		}
 #endif
 		input.update();
+		if ( input[CANCEL]  ) close = true;
 		if ( input[MENU]    ) close = true;
 		if ( input[UP]      ) sel = max(0, sel-1);
 		if ( input[DOWN]    ) sel = min((int)voices.size()-1, sel+1);
@@ -2365,4 +2332,58 @@ void GMenu2X::drawBottomBar(Surface *s) {
 		bar->blit(s, 0, resY-bar->raw->h);
 	else
 		s->box(0, resY-20, resX, 20, skinConfColors[COLOR_BOTTOM_BAR_BG]);
+}
+
+unsigned short GMenu2X::getWiFiLevel() {
+	int nWiFi = 0;
+#if TARGET_IZ2S
+	char *eth0start;
+	FILE *devfd;
+	int noise;
+	char buf[256];
+	static int bufsize = 255;
+
+	devfd = fopen("/proc/net/wireless", "r");
+
+	// ignore the first two lines of the file
+	fgets(buf, bufsize, devfd);
+	fgets(buf, bufsize, devfd);
+
+	while (fgets(buf, bufsize, devfd)) {
+	  if ((eth0start = strstr(buf, "eth0:")) != NULL) {
+		sscanf(eth0start + 6, "%*d %*d %d  %d", &nWiFi, &noise);
+		nWiFi -= noise;
+		if (nWiFi < 0)
+		  nWiFi = 0;
+		break;
+	  }
+	}
+	fclose(devfd);
+
+#endif
+#ifdef TARGET_Z2
+    char line[LINE_BUFSIZE];
+    vector<string> scriptOutput;
+
+    /* Get a pipe where the output from the scripts comes in */
+    FILE* pipe = popen("/usr/sbin/iwconfig wlan0 | /bin/grep \"Quality\" | /bin/sed 's#.*ity=##g' | /bin/sed 's#/70.*##g'", "r");
+		if (pipe == NULL) return 6; /* return with exit code indicating error */
+
+    /* Read script output from the pipe... for this one there should only be one line */
+    while (fgets(line, LINE_BUFSIZE, pipe) != NULL) {
+		scriptOutput.push_back(line);
+    }
+
+	pclose(pipe); /* Close the pipe */
+
+	if(scriptOutput.size())
+		nWiFi = atoi(scriptOutput[0].c_str());
+#endif
+
+	if 		(nWiFi==0) 	return 0;
+	else if (nWiFi>66) 	return 5;
+	else if (nWiFi>60) 	return 4;
+	else if (nWiFi>50) 	return 3;
+	else if (nWiFi>30)  return 2;
+	else 				return 1;
 }

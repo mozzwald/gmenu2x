@@ -110,6 +110,13 @@ private:
 	*/
 	unsigned short getBatteryLevel();
 	int batteryHandle;
+	unsigned short nbattlevel;
+	/*!
+	Gets Wifi connection signal strength
+	@return A number 0 - 5
+	*/
+	unsigned short getWiFiLevel();
+	int nwifilevel;
 	void browsePath(const string &path, vector<string>* directories, vector<string>* files);
 	/*!
 	Starts the scanning of the nand and sd filesystems, searching for gpe and gpu files and creating the links in 2 dedicated sections.
