@@ -447,7 +447,7 @@ void GMenu2X::initBG() {
 	sc.add(bgmain,"bgmain");
 
 	Surface sd("imgs/sd.png", confStr["skin"]);
-#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#ifdef TARGET_IZ2S /* ZIPIT_Z2_VOLUME */
 	Surface cpu("imgs/volume.png", confStr["skin"]);
 	Surface volume("imgs/phones.png", confStr["skin"]);
 #else
@@ -464,7 +464,7 @@ void GMenu2X::initBG() {
 	cpuX = volumeX+font->getTextWidth("100")+5;
 	cpu.blit( sc["bgmain"], cpuX, bottomBarIconY );
 	cpuX += 19;
-#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#ifdef TARGET_IZ2S /* ZIPIT_Z2_VOLUME */
 	manualX = cpuX+font->getTextWidth("300Mhz")+5;
 #else
 	manualX = cpuX+font->getTextWidth("100")+5;
@@ -899,8 +899,11 @@ void GMenu2X::main() {
 	uint nloops = 0;
 	long tickBattery = -60000, tickNow;
 	string batteryIcon = "imgs/battery/0.png";
-#ifdef TARGET_Z2
+#if defined(TARGET_Z2) || defined(TARGET_IZ2S)
 	string wifiIcon = "imgs/wifi/off.png";
+#endif
+#ifdef TARGET_Z2
+	string cpuIcon = "imgs/cpu/0.png";
 #endif
 	stringstream ss;
 	uint sectionsCoordX = 24;
@@ -912,6 +915,7 @@ void GMenu2X::main() {
 
 	nbattlevel = getBatteryLevel();
 	nwifilevel = getWiFiLevel();
+	nMHz = getCPUspeed();
 	bRedraw = true;
 
 	while (!quit) {
@@ -977,7 +981,7 @@ void GMenu2X::main() {
 				}
 			}
 #endif
-#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#ifdef TARGET_IZ2S /* ZIPIT_Z2_VOLUME */
 			if (menu->selLink()!=NULL) {
 				s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
 				{ // zipit volume is independent of menu->selLinkApp()
@@ -1003,8 +1007,10 @@ void GMenu2X::main() {
 			if (menu->selLink()!=NULL) {
 				s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
 				if (menu->selLinkApp()!=NULL) {
+#ifndef TARGET_Z2
 					s->write ( font, menu->selLinkApp()->clockStr(confInt["maxClock"]), cpuX, bottomBarTextY, HAlignLeft, VAlignMiddle );
 					s->write ( font, menu->selLinkApp()->volumeStr(), volumeX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+#endif
 					//Manual indicator
 					if (!menu->selLinkApp()->getManual().empty())
 						sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
@@ -1017,6 +1023,15 @@ void GMenu2X::main() {
 				btnContextMenu->paint();
 			}
 #endif
+
+#ifdef TARGET_Z2
+			// draw cpu speed icon
+			char cpuspeed[3];
+			snprintf(cpuspeed, sizeof(cpuspeed), "%d", nMHz);
+			cpuIcon = "imgs/cpu/"+string(cpuspeed)+".png";
+			sc.skinRes(cpuIcon)->blit( s, cpuX-19, bottomBarIconY );
+#endif
+#if defined(TARGET_Z2) || defined(TARGET_IZ2S)
 			// draw wifi status/signal level
 			if (nwifilevel == 0)
 				wifiIcon = "imgs/wifi/off.png";
@@ -1026,7 +1041,7 @@ void GMenu2X::main() {
 				wifiIcon = "imgs/wifi/"+string(wifilevel)+".png";
 			}
 			sc.skinRes(wifiIcon)->blit( s, resX-19*3, bottomBarIconY );
-
+#endif
 			// draw battery status
 			if (nbattlevel == 6) {
 				batteryIcon = "imgs/battery/ac_chrg.png";
@@ -1182,7 +1197,12 @@ void GMenu2X::main() {
 			 * cpu speed, battery level, wifi level, clock, anything else
 			 */
 			nbattlevel = getBatteryLevel();
+#if defined(TARGET_Z2) || defined(TARGET_IZ2S)
 			nwifilevel = getWiFiLevel();
+#endif
+#ifdef TARGET_Z2
+			nMHz = getCPUspeed();
+#endif
 			bRedraw = true;
 			nloops=0;
 		}
@@ -2386,4 +2406,25 @@ unsigned short GMenu2X::getWiFiLevel() {
 	else if (nWiFi>50) 	return 3;
 	else if (nWiFi>30)  return 2;
 	else 				return 1;
+}
+
+unsigned short GMenu2X::getCPUspeed() {
+#ifdef TARGET_Z2
+	FILE* mhzHandle = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "r");
+#endif
+
+	if (!mhzHandle) return 0;
+	int hz = 0;
+	fscanf(mhzHandle, "%d", &hz);
+	fclose(mhzHandle);
+	hz /= 1000;
+#ifdef TARGET_Z2
+	// printf("CPUSpeed: %d\n", hz);
+	if      ( hz == 156 ) return 1;
+	else if ( hz == 208 ) return 2;
+	else if ( hz == 312 ) return 3;
+	else if ( hz == 416 ) return 4;
+	else if ( hz == 520 ) return 5;
+	else                 return 0;
+#endif
 }

@@ -117,6 +117,12 @@ private:
 	*/
 	unsigned short getWiFiLevel();
 	int nwifilevel;
+	/*!
+	Gets CPU Frequency
+	@return A number 0 - 4
+	*/
+	unsigned short getCPUspeed();
+	int nMHz;
 	void browsePath(const string &path, vector<string>* directories, vector<string>* files);
 	/*!
 	Starts the scanning of the nand and sd filesystems, searching for gpe and gpu files and creating the links in 2 dedicated sections.
