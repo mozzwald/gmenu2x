@@ -396,6 +396,8 @@ GMenu2X::GMenu2X() {
 	readTmp();
 	if (lastSelectorElement>-1 && menu->selLinkApp()!=NULL && (!menu->selLinkApp()->getSelectorDir().empty() || !lastSelectorDir.empty()))
 		menu->selLinkApp()->selector(lastSelectorElement,lastSelectorDir);
+
+	bRedraw=true;
 }
 
 GMenu2X::~GMenu2X() {
@@ -894,8 +896,10 @@ void GMenu2X::main() {
 	bool quit = false;
 	int x,y, offset = menu->sectionLinks()->size()>linksPerPage ? 2 : 6, helpBoxHeight = fwType=="open2x" ? 154 : 139;
 	uint i;
+	uint nloops = 0;
 	long tickBattery = -60000, tickNow;
 	string batteryIcon = "imgs/battery/0.png";
+	unsigned short battlevel = getBatteryLevel();
 #ifdef TARGET_Z2
 	long tickWifi = -10000;
 	string wifiIcon = "imgs/wifi/off.png";
@@ -908,156 +912,155 @@ void GMenu2X::main() {
 	btnContextMenu->setPosition(resX-38, bottomBarIconY);
 	btnContextMenu->setAction(MakeDelegate(this, &GMenu2X::contextMenu));
 
+	bRedraw = true;
+
 	while (!quit) {
 		tickNow = SDL_GetTicks();
 
-		//Background
-		sc["bgmain"]->blit(s,0,0);
+		/* Only redraw the screen when we really need to and
+		 * if gmenu2x is the currently active tty */
+		if(bRedraw && (SDL_GetAppState() & SDL_APPACTIVE)){
+			//Background
+			sc["bgmain"]->blit(s,0,0);
 
-		//Sections
-		sectionsCoordX = halfX - (constrain((uint)menu->getSections().size(), 0 , linkColumns) * skinConfInt["linkWidth"]) / 2;
-// #ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar.
-		
-// #else
-		if (menu->firstDispSection()>0)
-			sc.skinRes("imgs/l_enabled.png")->blit(s,0,0);
-		else
-			sc.skinRes("imgs/l_disabled.png")->blit(s,0,0);
-		if (menu->firstDispSection()+linkColumns<menu->getSections().size())
-			sc.skinRes("imgs/r_enabled.png")->blit(s,resX-10,0);
-		else
-			sc.skinRes("imgs/r_disabled.png")->blit(s,resX-10,0);
-// #endif
-		for (i=menu->firstDispSection(); i<menu->getSections().size() && i<menu->firstDispSection()+linkColumns; i++) {
-			string sectionIcon = "skin:sections/"+menu->getSections()[i]+".png";
-			x = (i-menu->firstDispSection())*skinConfInt["linkWidth"]+sectionsCoordX;
-			if (menu->selSectionIndex()==(int)i)
-				s->box(x, 0, skinConfInt["linkWidth"],
-				skinConfInt["topBarHeight"], skinConfColors[COLOR_SELECTION_BG]);
-			x += skinConfInt["linkWidth"]/2;
-			if (sc.exists(sectionIcon))
-				sc[sectionIcon]->blit(s,x-16,sectionLinkPadding,32,32);
+			//Sections
+			sectionsCoordX = halfX - (constrain((uint)menu->getSections().size(), 0 , linkColumns) * skinConfInt["linkWidth"]) / 2;
+			if (menu->firstDispSection()>0)
+				sc.skinRes("imgs/l_enabled.png")->blit(s,0,0);
 			else
-				sc.skinRes("icons/section.png")->blit(s,x-16,sectionLinkPadding,32,32);
-			s->write( font, menu->getSections()[i], x, skinConfInt["topBarHeight"]-sectionLinkPadding, HAlignCenter, VAlignBottom );
-		}
+				sc.skinRes("imgs/l_disabled.png")->blit(s,0,0);
+			if (menu->firstDispSection()+linkColumns<menu->getSections().size())
+				sc.skinRes("imgs/r_enabled.png")->blit(s,resX-10,0);
+			else
+				sc.skinRes("imgs/r_disabled.png")->blit(s,resX-10,0);
 
-		//Links
-		s->setClipRect(offset,skinConfInt["topBarHeight"],resX-9,resY-74); //32*2+10
-		for (i=menu->firstDispRow()*linkColumns; i<(menu->firstDispRow()*linkColumns)+linksPerPage && i<menu->sectionLinks()->size(); i++) {
-			int ir = i-menu->firstDispRow()*linkColumns;
-			x = (ir%linkColumns)*(skinConfInt["linkWidth"]+linkSpacingX)+offset;
-			y = ir/linkColumns*(skinConfInt["linkHeight"]+linkSpacingY)+skinConfInt["topBarHeight"]+2;
-			menu->sectionLinks()->at(i)->setPosition(x,y);
+			for (i=menu->firstDispSection(); i<menu->getSections().size() && i<menu->firstDispSection()+linkColumns; i++) {
+				string sectionIcon = "skin:sections/"+menu->getSections()[i]+".png";
+				x = (i-menu->firstDispSection())*skinConfInt["linkWidth"]+sectionsCoordX;
+				if (menu->selSectionIndex()==(int)i)
+					s->box(x, 0, skinConfInt["linkWidth"],
+					skinConfInt["topBarHeight"], skinConfColors[COLOR_SELECTION_BG]);
+				x += skinConfInt["linkWidth"]/2;
+				if (sc.exists(sectionIcon))
+					sc[sectionIcon]->blit(s,x-16,sectionLinkPadding,32,32);
+				else
+					sc.skinRes("icons/section.png")->blit(s,x-16,sectionLinkPadding,32,32);
+				s->write( font, menu->getSections()[i], x, skinConfInt["topBarHeight"]-sectionLinkPadding, HAlignCenter, VAlignBottom );
+			}
 
-			if (i==(uint)menu->selLinkIndex())
-				menu->sectionLinks()->at(i)->paintHover();
+			//Links
+			s->setClipRect(offset,skinConfInt["topBarHeight"],resX-9,resY-74); //32*2+10
+			for (i=menu->firstDispRow()*linkColumns; i<(menu->firstDispRow()*linkColumns)+linksPerPage && i<menu->sectionLinks()->size(); i++) {
+				int ir = i-menu->firstDispRow()*linkColumns;
+				x = (ir%linkColumns)*(skinConfInt["linkWidth"]+linkSpacingX)+offset;
+				y = ir/linkColumns*(skinConfInt["linkHeight"]+linkSpacingY)+skinConfInt["topBarHeight"]+2;
+				menu->sectionLinks()->at(i)->setPosition(x,y);
 
-			menu->sectionLinks()->at(i)->paint();
-		}
-		s->clearClipRect();
+				if (i==(uint)menu->selLinkIndex())
+					menu->sectionLinks()->at(i)->paintHover();
 
-		drawScrollBar(linkRows,menu->sectionLinks()->size()/linkColumns + ((menu->sectionLinks()->size()%linkColumns==0) ? 0 : 1),menu->firstDispRow(),43,resY-81);
+				menu->sectionLinks()->at(i)->paint();
+			}
+			s->clearClipRect();
+
+			drawScrollBar(linkRows,menu->sectionLinks()->size()/linkColumns + ((menu->sectionLinks()->size()%linkColumns==0) ? 0 : 1),menu->firstDispRow(),43,resY-81);
 
 #ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
-		// Handy spot for the mute icon.
-		//sc.skinRes("imgs/mute.png")->blit(s,resX-56,bottomBarIconY); 
+			// Handy spot for the mute icon.
+			//sc.skinRes("imgs/mute.png")->blit(s,resX-56,bottomBarIconY);
 #else
-		if (fwType=="open2x") {
-			switch(volumeMode) {
-				case VOLUME_MODE_MUTE:   sc.skinRes("imgs/mute.png")->blit(s,resX-56,bottomBarIconY); break;
-				case VOLUME_MODE_PHONES: sc.skinRes("imgs/phones.png")->blit(s,resX-56,bottomBarIconY); break;
-				default: sc.skinRes("imgs/volume.png")->blit(s,resX-56,bottomBarIconY); break;
+			if (fwType=="open2x") {
+				switch(volumeMode) {
+					case VOLUME_MODE_MUTE:   sc.skinRes("imgs/mute.png")->blit(s,resX-56,bottomBarIconY); break;
+					case VOLUME_MODE_PHONES: sc.skinRes("imgs/phones.png")->blit(s,resX-56,bottomBarIconY); break;
+					default: sc.skinRes("imgs/volume.png")->blit(s,resX-56,bottomBarIconY); break;
+				}
 			}
-		}
 #endif
 #ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
-		if (menu->selLink()!=NULL) {
-			s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
-			{ // zipit volume is independent of menu->selLinkApp()
-				stringstream ss;
-				string speakerStr = "";
-				string phonesStr = "";
-				ss.clear();
-				ss << volumeScalerNormal;
-				ss >> speakerStr;
-				s->write ( font, speakerStr, cpuX, bottomBarTextY, HAlignLeft, VAlignMiddle );
-				ss.clear();
-				ss << volumeScalerPhones;
-				ss >> phonesStr;
-				s->write ( font, phonesStr, volumeX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+			if (menu->selLink()!=NULL) {
+				s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
+				{ // zipit volume is independent of menu->selLinkApp()
+					stringstream ss;
+					string speakerStr = "";
+					string phonesStr = "";
+					ss.clear();
+					ss << volumeScalerNormal;
+					ss >> speakerStr;
+					s->write ( font, speakerStr, cpuX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+					ss.clear();
+					ss << volumeScalerPhones;
+					ss >> phonesStr;
+					s->write ( font, phonesStr, volumeX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+				}
+				if (menu->selLinkApp()!=NULL) {
+					//Manual indicator
+					if (!menu->selLinkApp()->getManual().empty())
+						sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
+				}
 			}
-			if (menu->selLinkApp()!=NULL) {
-				//Manual indicator
-				if (!menu->selLinkApp()->getManual().empty())
-					sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
-			}
-		}
 #else
-		if (menu->selLink()!=NULL) {
-			s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
-			if (menu->selLinkApp()!=NULL) {
-				s->write ( font, menu->selLinkApp()->clockStr(confInt["maxClock"]), cpuX, bottomBarTextY, HAlignLeft, VAlignMiddle );
-				s->write ( font, menu->selLinkApp()->volumeStr(), volumeX, bottomBarTextY, HAlignLeft, VAlignMiddle );
-				//Manual indicator
-				if (!menu->selLinkApp()->getManual().empty())
-					sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
+			if (menu->selLink()!=NULL) {
+				s->write ( font, menu->selLink()->getDescription(), halfX, resY-19, HAlignCenter, VAlignBottom );
+				if (menu->selLinkApp()!=NULL) {
+					s->write ( font, menu->selLinkApp()->clockStr(confInt["maxClock"]), cpuX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+					s->write ( font, menu->selLinkApp()->volumeStr(), volumeX, bottomBarTextY, HAlignLeft, VAlignMiddle );
+					//Manual indicator
+					if (!menu->selLinkApp()->getManual().empty())
+						sc.skinRes("imgs/manual.png")->blit(s,manualX,bottomBarIconY);
+				}
 			}
-		}
 #endif
 
 #if 1 /* ZIPIT_Z2 (IZ2S) */
-		// No touchscreen so show inet icon instead of btnContextMenu
-		if (tickNow-tickWifi >= 10000) {
-			tickWifi = tickNow;
+			// No touchscreen so show inet icon instead of btnContextMenu
+			if (tickNow-tickWifi >= 10000) {
+				tickWifi = tickNow;
 
-			char *eth0start;
-			FILE *devfd;
-			int level=0, noise;
-			char buf[256];
-			static int bufsize = 255;
+				char *eth0start;
+				FILE *devfd;
+				int level=0, noise;
+				char buf[256];
+				static int bufsize = 255;
 			
-			devfd = fopen("/proc/net/wireless", "r");
+				devfd = fopen("/proc/net/wireless", "r");
 			
-			// ignore the first two lines of the file
-			fgets(buf, bufsize, devfd);
-			fgets(buf, bufsize, devfd);
+				// ignore the first two lines of the file
+				fgets(buf, bufsize, devfd);
+				fgets(buf, bufsize, devfd);
 			
-			while (fgets(buf, bufsize, devfd)) {
-			  if ((eth0start = strstr(buf, "eth0:")) != NULL) {
-			    sscanf(eth0start + 6, "%*d %*d %d  %d", &level, &noise);
-			    level -= noise;
-			    if (level < 0)
-			      level = 0;
-			    break;
-			  }
+				while (fgets(buf, bufsize, devfd)) {
+				  if ((eth0start = strstr(buf, "eth0:")) != NULL) {
+				    sscanf(eth0start + 6, "%*d %*d %d  %d", &level, &noise);
+				    level -= noise;
+				    if (level < 0)
+				      level = 0;
+				    break;
+				  }
+				}
+				fclose(devfd);
+			
+				if (level == 0){
+					wifiIcon = "imgs/wifi/off.png";
+				}
+				else{
+					level = level / 15 +1;
+					if (level > 5) level = 5;
+					ss.clear();
+					ss << level;
+					ss >> wifiIcon;
+					wifiIcon = "imgs/wifi/"+wifiIcon+".png";
+				}
+				//Surface inetS(wifiIcon, confStr["skin"]);
+				//inetS.blit( sc["bgmain"], resX-38, bottomBarIconY );
 			}
-			fclose(devfd);
-			
-			if (level == 0){
-				wifiIcon = "imgs/wifi/off.png";
-			}
-			else{
-			  	level = level / 15 +1;
-				if (level > 5) level = 5;
-				ss.clear();
-				ss << level;
-				ss >> wifiIcon;
-				wifiIcon = "imgs/wifi/"+wifiIcon+".png";
-			}
-			//Surface inetS(wifiIcon, confStr["skin"]);
-			//inetS.blit( sc["bgmain"], resX-38, bottomBarIconY );
-		}
-		sc.skinRes(wifiIcon)->blit( s, resX-38, bottomBarIconY );
+			sc.skinRes(wifiIcon)->blit( s, resX-38, bottomBarIconY );
 #else
-		if (f200) {
-			btnContextMenu->paint();
-		}
+			if (f200) {
+				btnContextMenu->paint();
+			}
 #endif
-		//check battery status every 60 seconds
-		if (tickNow-tickBattery >= 60000) {
-			tickBattery = tickNow;
-			unsigned short battlevel = getBatteryLevel();
+			// draw battery status
 			if (battlevel == 6) {
 				batteryIcon = "imgs/battery/ac_chrg.png";
 			} else if (battlevel == 7){
@@ -1068,35 +1071,36 @@ void GMenu2X::main() {
 				ss >> batteryIcon;
 				batteryIcon = "imgs/battery/"+batteryIcon+".png";
 			}
-		}
-		sc.skinRes(batteryIcon)->blit( s, resX-19, bottomBarIconY );
+			sc.skinRes(batteryIcon)->blit( s, resX-19, bottomBarIconY );
 
-		//On Screen Help
-		if (input.isActive(MODIFIER)) {
-			s->box(10,50,300,143, skinConfColors[COLOR_MESSAGE_BOX_BG]);
-			s->rectangle( 12,52,296,helpBoxHeight, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );
-			s->write( font, tr["CONTROLS"], 20, 60 );
+			//On Screen Help
+			if (input.isActive(MODIFIER)) {
+				s->box(10,50,300,143, skinConfColors[COLOR_MESSAGE_BOX_BG]);
+				s->rectangle( 12,52,296,helpBoxHeight, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );
+				s->write( font, tr["CONTROLS"], 20, 60 );
 #ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
-			s->write( font, tr["Enter  -   Launch link / Confirm action"], 20, 80 );
-			s->write( font, tr["<<  >>  -   Change section"], 20, 95 );
-			s->write( font, tr["H     -   Show manual/readme"], 20, 110 );
-			s->write( font, tr["Tab   -   Show contextual menu"], 20, 125 );
-			s->write( font, tr["Space  -   Show options menu"], 20, 140 );
-			s->write( font, tr["VolUp, VolDown  -  Change headphone volume"], 20, 155 );
-			s->write( font, tr["Ctrl-VolUp, VolDown  -  Speaker volume"], 20, 170 );
+				s->write( font, tr["Enter  -   Launch link / Confirm action"], 20, 80 );
+				s->write( font, tr["<<  >>  -   Change section"], 20, 95 );
+				s->write( font, tr["H     -   Show manual/readme"], 20, 110 );
+				s->write( font, tr["Tab   -   Show contextual menu"], 20, 125 );
+				s->write( font, tr["Space  -   Show options menu"], 20, 140 );
+				s->write( font, tr["VolUp, VolDown  -  Change headphone volume"], 20, 155 );
+				s->write( font, tr["Ctrl-VolUp, VolDown  -  Speaker volume"], 20, 170 );
 #else
-			s->write( font, tr["B, Stick press: Launch link / Confirm action"], 20, 80 );
-			s->write( font, tr["L, R: Change section"], 20, 95 );
-			s->write( font, tr["Y: Show manual/readme"], 20, 110 );
-			s->write( font, tr["VOLUP, VOLDOWN: Change cpu clock"], 20, 125 );
-			s->write( font, tr["A+VOLUP, A+VOLDOWN: Change volume"], 20, 140 );
-			s->write( font, tr["SELECT: Show contextual menu"], 20, 155 );
-			s->write( font, tr["START: Show options menu"], 20, 170 );
-			if (fwType=="open2x") s->write( font, tr["X: Toggle speaker mode"], 20, 185 );
+				s->write( font, tr["B, Stick press: Launch link / Confirm action"], 20, 80 );
+				s->write( font, tr["L, R: Change section"], 20, 95 );
+				s->write( font, tr["Y: Show manual/readme"], 20, 110 );
+				s->write( font, tr["VOLUP, VOLDOWN: Change cpu clock"], 20, 125 );
+				s->write( font, tr["A+VOLUP, A+VOLDOWN: Change volume"], 20, 140 );
+				s->write( font, tr["SELECT: Show contextual menu"], 20, 155 );
+				s->write( font, tr["START: Show options menu"], 20, 170 );
+				if (fwType=="open2x") s->write( font, tr["X: Toggle speaker mode"], 20, 185 );
 #endif
-		}
+			}
 
-		s->flip();
+			s->flip();
+			bRedraw = false;
+		} //end bRedraw
 
 #if 1 /* ZIPIT_Z2 (IZ2S) */
 #else
@@ -1128,7 +1132,7 @@ void GMenu2X::main() {
 			}
 		}
 #endif
-		input.update();
+		if ( input.update(false) ) bRedraw = true;
 		if ( input[CONFIRM] && menu->selLink()!=NULL ) menu->selLink()->run();
 		else if ( input[SETTINGS]  ) options();
 		else if ( input[MENU] ) contextMenu();
@@ -1206,10 +1210,21 @@ void GMenu2X::main() {
 				offset = menu->sectionLinks()->size()>linksPerPage ? 2 : 6;
 			}
 		}
+
+		if(nloops++ > 200){  // about every ten seconds
+			/* Do stuff here that should be checked every once in a while:
+			 * cpu speed, battery level, wifi level, clock, anything else
+			 */
+			battlevel = getBatteryLevel();
+			bRedraw = true;
+			nloops=0;
+		}
+		usleep(LOOP_DELAY);
 	}
 
 	delete btnContextMenu;
 	btnContextMenu = NULL;
+
 }
 
 void GMenu2X::explorer() {

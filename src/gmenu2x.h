@@ -128,7 +128,7 @@ private:
 #if 1 /* ZIPIT_Z2 (IZ2S) */
 	void commander();
 #endif
-
+	bool bRedraw; // Only redraw when we really need to and if gmenu2x is the currently active tty
 	bool inet, //!< Represents the configuration of the basic network services. @see readCommonIni @see usbnet @see samba @see web
 		usbnet,
 		samba,
