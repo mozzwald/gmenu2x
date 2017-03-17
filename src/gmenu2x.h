@@ -111,18 +111,22 @@ private:
 	unsigned short getBatteryLevel();
 	int batteryHandle;
 	unsigned short nbattlevel;
+#if defined(TARGET_Z2) || defined(TARGET_IZ2S)
 	/*!
 	Gets Wifi connection signal strength
 	@return A number 0 - 5
 	*/
 	unsigned short getWiFiLevel();
 	int nwifilevel;
+#endif
+#ifdef TARGET_Z2
 	/*!
 	Gets CPU Frequency
 	@return A number 0 - 4
 	*/
 	unsigned short getCPUspeed();
 	int nMHz;
+#endif
 	void browsePath(const string &path, vector<string>* directories, vector<string>* files);
 	/*!
 	Starts the scanning of the nand and sd filesystems, searching for gpe and gpu files and creating the links in 2 dedicated sections.
@@ -272,6 +276,10 @@ public:
 
 	void drawTopBar(Surface *s=NULL);
 	void drawBottomBar(Surface *s=NULL);
+
+#ifdef TARGET_Z2
+	void getTime(char* strTime, int len);
+#endif
 
 	Menu* menu;
 };

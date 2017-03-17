@@ -887,6 +887,23 @@ void GMenu2X::ledOff() {
 #endif
 }
 
+void GMenu2X::getTime(char* strTime, int len){
+	char am_pm[10]="AM";
+	time_t t = time(NULL);
+	struct tm theLocalTime = *localtime(&t);
+	int nHr = theLocalTime.tm_hour;
+
+	if(theLocalTime.tm_hour >= 12){
+		am_pm[0]='P';
+		nHr %=12;
+	}
+
+	if(nHr == 0)
+		nHr = 12;
+
+	snprintf(strTime, len, "%2d:%02d %s", nHr, theLocalTime.tm_min, am_pm);
+}
+
 void GMenu2X::main() {
 	uint linksPerPage = linkColumns*linkRows;
 	int linkSpacingX = (resX-10 - linkColumns*skinConfInt["linkWidth"])/linkColumns;
@@ -904,6 +921,8 @@ void GMenu2X::main() {
 #endif
 #ifdef TARGET_Z2
 	string cpuIcon = "imgs/cpu/0.png";
+	char strTime[20];
+	getTime(strTime, sizeof(strTime));
 #endif
 	stringstream ss;
 	uint sectionsCoordX = 24;
@@ -1030,6 +1049,10 @@ void GMenu2X::main() {
 			snprintf(cpuspeed, sizeof(cpuspeed), "%d", nMHz);
 			cpuIcon = "imgs/cpu/"+string(cpuspeed)+".png";
 			sc.skinRes(cpuIcon)->blit( s, cpuX-19, bottomBarIconY );
+
+			//draw the time
+			s->write ( font, strTime, manualX+19*2, bottomBarTextY, HAlignLeft, VAlignMiddle );
+			sc.skinRes("imgs/clock.png")->blit( s, manualX+19, bottomBarIconY );
 #endif
 #if defined(TARGET_Z2) || defined(TARGET_IZ2S)
 			// draw wifi status/signal level
@@ -1202,6 +1225,7 @@ void GMenu2X::main() {
 #endif
 #ifdef TARGET_Z2
 			nMHz = getCPUspeed();
+			getTime(strTime, sizeof(strTime));
 #endif
 			bRedraw = true;
 			nloops=0;
