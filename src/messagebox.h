@@ -28,9 +28,12 @@
 
 #include <string>
 #include "gmenu2x.h"
+#include "FastDelegate.h"
 
 using std::string;
 using std::vector;
+
+typedef fastdelegate::FastDelegate2<MessageBox*, int&, void> BlockingAction;
 
 class MessageBox {
 private:
@@ -39,10 +42,13 @@ private:
 	vector<string> buttons;
 	vector<string> buttonLabels;
 	vector<SDL_Rect> buttonPositions;
+	BlockingAction action;
+	void Draw();
 
 public:
-	MessageBox(GMenu2X *gmenu2x, const string &text, const string &icon="");
+	MessageBox(GMenu2X *gmenu2x, const string &text, const string &icon="", BlockingAction act=0);
 	void setButton(int action, const string &btn);
+	void setText(const std::string &str);
 	int exec();
 };
 

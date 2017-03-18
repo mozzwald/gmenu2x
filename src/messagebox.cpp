@@ -26,7 +26,7 @@
 
 using namespace std;
 
-MessageBox::MessageBox(GMenu2X *gmenu2x, const string &text, const string &icon) {
+MessageBox::MessageBox(GMenu2X *gmenu2x, const string &text, const string &icon, BlockingAction act):action(act) {
 	this->gmenu2x = gmenu2x;
 	this->text = text;
 	this->icon = icon;
@@ -40,6 +40,7 @@ MessageBox::MessageBox(GMenu2X *gmenu2x, const string &text, const string &icon)
 		buttonPositions[x].h = gmenu2x->font->getHeight();
 	}
 
+	if(action == 0)
 	//Default enabled button
 	buttons[CONFIRM] = "OK";
 
@@ -68,9 +69,12 @@ void MessageBox::setButton(int action, const string &btn) {
 	buttons[action] = btn;
 }
 
-int MessageBox::exec() {
-	int result = -1;
+void MessageBox::setText(const string &str){
+	text = str;
+	Draw();
+}
 
+void MessageBox::Draw(){
 	Surface bg(gmenu2x->s);
 	//Darken background
 	bg.box(0, 0, gmenu2x->resX, gmenu2x->resY, 0,0,0,200);
@@ -106,25 +110,33 @@ int MessageBox::exec() {
 
 	bg.blit(gmenu2x->s,0,0);
 	gmenu2x->s->flip();
+}
 
-	while (result<0) {
-		//touchscreen
-		if (gmenu2x->f200) {
-			if (gmenu2x->ts.poll()) {
-				for (uint i=0; i<buttons.size(); i++)
-					if (buttons[i]!="" && gmenu2x->ts.inRect(buttonPositions[i])) {
-						result = i;
-						i = buttons.size();
-					}
+int MessageBox::exec() {
+	int result = -1;
+
+	if(action)
+		action(this, result);
+	else{
+		while (result<0) {
+#ifdef TOUCHSCREEN
+			//touchscreen
+			if (gmenu2x->f200) {
+				if (gmenu2x->ts.poll()) {
+					for (uint i=0; i<buttons.size(); i++)
+						if (buttons[i]!="" && gmenu2x->ts.inRect(buttonPositions[i])) {
+							result = i;
+							i = buttons.size();
+						}
+				}
 			}
+#endif
+			gmenu2x->input.update();
+			for (uint i=0; i<buttons.size(); i++)
+				if (buttons[i]!="" && gmenu2x->input[i]) result = i;
+
+			usleep(LOOP_DELAY);
 		}
-
-		gmenu2x->input.update();
-		for (uint i=0; i<buttons.size(); i++)
-			if (buttons[i]!="" && gmenu2x->input[i]) result = i;
-
-		usleep(LOOP_DELAY);
 	}
-
 	return result;
 }
