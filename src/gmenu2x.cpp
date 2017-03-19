@@ -120,13 +120,12 @@ static void quit_all(int err) {
 	exit(err);
 }
 
-#if defined(TARGET_Z2)
-//char *progpath = "/mnt/ffs/gmenu2x/";
-char *progpath = "./";
+#ifdef TARGET_Z2
+char *progpath = "/mnt/ffs/gmenu2x/";
 const char sdcard[] = "/";
 #endif
 
-#ifdef TARGET_Z2
+#if defined(TARGET_Z2) || defined(TARGET_IZ2S)
 // Commander
 #include "def.h"
 #include "sdlutils.h"
@@ -161,7 +160,7 @@ int main(int /*argc*/, char * /*argv*/[]) {
 	signal(SIGSEGV,&quit_all);
 	signal(SIGTERM,&quit_all);
 
-#if defined(TARGET_Z2)
+#if defined(TARGET_IZ2S)
 	progpath = get_current_dir_name();	
 	strcat(progpath, "/");
 #endif
@@ -1138,6 +1137,7 @@ void GMenu2X::main() {
 #endif
 		if ( input.update(false) ) bRedraw = true;
 		if ( input[CONFIRM] && menu->selLink()!=NULL ) menu->selLink()->run();
+		else if ( input[WIFI_SETUP] )	wifiSetup();
 		else if ( input[SETTINGS]  ) options();
 		else if ( input[MENU] ) contextMenu();
 		// VOLUME SCALE MODIFIER
@@ -1253,7 +1253,7 @@ void GMenu2X::explorer() {
 			writeConfigOpen2x();
 #endif
 		//string command = cmdclean(fd.path()+"/"+fd.file) + "; sync & cd "+cmdclean(getExePath())+"; exec ./gmenu2x";
-#ifdef TARGET_Z2
+#ifdef TARGET_IZ2S
 		// Trap INT and TERM signals or they will kill this wrapper before the return to gmenu. 
 		string command = "trap - INT TERM; " + cmdclean(fd.getPath()+"/"+fd.getFile());
 		string filepath = progpath; //gmenu2x->getExePath();
@@ -1501,6 +1501,89 @@ void GMenu2X::activateRootUsb() {
 	}
 }
 #endif
+
+int GMenu2X::listbox(vector<MenuOption>* voices){
+	bool close = false;
+	uint i, sel=0, fadeAlpha=0;
+
+	int h = font->getHeight();
+	SDL_Rect box;
+	box.h = (h+2)*voices->size()+8;
+	box.w = 0;
+	for (i=0; i<voices->size(); i++) {
+		int w = font->getTextWidth(voices->at(i).text);
+		if (w>box.w) box.w = w;
+	}
+	box.w += 23;
+	box.x = halfX - box.w/2;
+	box.y = halfY - box.h/2;
+
+	SDL_Rect selbox = {box.x+4, 0, box.w-8, h+2};
+	long tickNow, tickStart = SDL_GetTicks();
+
+	Surface bg(s);
+	/*//Darken background
+	bg.box(0, 0, resX, resY, 0,0,0,150);
+	bg.box(box.x, box.y, box.w, box.h, skinConfColors[COLOR_MESSAGE_BOX_BG]);
+	bg.rectangle( box.x+2, box.y+2, box.w-4, box.h-4, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );*/
+
+	while (!close) {
+		tickNow = SDL_GetTicks();
+
+		selbox.y = box.y+4+(h+2)*sel;
+		bg.blit(s,0,0);
+
+		if (fadeAlpha<200) fadeAlpha = intTransition(0,200,tickStart,500,tickNow);
+		s->box(0, 0, resX, resY, 0,0,0,fadeAlpha);
+		s->box(box.x, box.y, box.w, box.h, skinConfColors[COLOR_MESSAGE_BOX_BG]);
+		s->rectangle( box.x+2, box.y+2, box.w-4, box.h-4, skinConfColors[COLOR_MESSAGE_BOX_BORDER] );
+
+
+		//draw selection rect
+		s->box( selbox.x, selbox.y, selbox.w, selbox.h, skinConfColors[COLOR_MESSAGE_BOX_SELECTION] );
+		for (i=0; i<voices->size(); i++)
+			s->write( font, voices->at(i).text, box.x+12, box.y+5+(h+2)*i, HAlignLeft, VAlignTop );
+		s->flip();
+
+#ifdef TOUCHSCREEN
+		//touchscreen
+		if (f200) {
+			ts.poll();
+			if (ts.released()) {
+				if (!ts.inRect(box))
+					close = true;
+				else if (ts.getX() >= selbox.x
+					  && ts.getX() <= selbox.x + selbox.w)
+					for (i=0; i<voices->size(); i++) {
+						selbox.y = box.y+4+(h+2)*i;
+						if (ts.getY() >= selbox.y
+						 && ts.getY() <= selbox.y + selbox.h) {
+							voices->at(i).action();
+							close = true;
+							i = voices->size();
+						}
+					}
+			} else if (ts.pressed() && ts.inRect(box)) {
+				for (i=0; i<voices->size(); i++) {
+					selbox.y = box.y+4+(h+2)*i;
+					if (ts.getY() >= selbox.y
+					 && ts.getY() <= selbox.y + selbox.h) {
+						sel = i;
+						i = voices->size();
+					}
+				}
+			}
+		}
+#endif
+		input.update();
+		if ( input[CANCEL]  ) { close = true; sel = -1; }
+		if ( input[MENU]    ) { close = true; sel = -1; }
+		if ( input[UP]      ) sel = max(0, sel-1);
+		if ( input[DOWN]    ) sel = min((int)voices->size()-1, sel+1);
+		if ( input[CONFIRM] ) { voices->at(sel).action(); close = true; }
+	}
+	return sel;
+}
 
 void GMenu2X::contextMenu() {
 	vector<MenuOption> voices;
@@ -2083,6 +2166,7 @@ void GMenu2X::setInputSpeed() {
 	input.setInterval(300, SECTION_NEXT);
 	input.setInterval(300, PAGEUP);
 	input.setInterval(300, PAGEDOWN);
+	input.setInterval(30,  WIFI_SETUP);
 }
 
 void GMenu2X::applyRamTimings() {
@@ -2249,7 +2333,7 @@ int GMenu2X::getVolumeScaler() {
 
 const string &GMenu2X::getExePath() {
 	if (path.empty()) {
-#if defined(TARGET_Z2)
+#if defined(TARGET_IZ2S)
 		// readlink returns -1 and empty buf.  uclibc bug?
 		// but gmenu2x hangs if we return a good path.  WTF?
 		path = "";
@@ -2380,7 +2464,7 @@ void GMenu2X::drawBottomBar(Surface *s) {
 
 unsigned short GMenu2X::getWiFiLevel() {
 	int nWiFi = 0;
-#if TARGET_IZ2S
+#ifdef TARGET_IZ2S
 	char *eth0start;
 	FILE *devfd;
 	int noise;
@@ -2451,4 +2535,141 @@ unsigned short GMenu2X::getCPUspeed() {
 	else if ( hz == 520 ) return 5;
 	else                 return 0;
 #endif
+}
+
+void GMenu2X::wifiSetup() {
+	vector<MenuOption> voices;
+
+	{
+	MenuOption opt = { tr["Connect"], MakeDelegate(this, &GMenu2X::wifiConnect) };
+	voices.push_back(opt);
+	}{
+	MenuOption opt = { tr["Add Network"], MakeDelegate(this, &GMenu2X::wifiAddNetwork) };
+	voices.push_back(opt);
+	}{
+	MenuOption opt = { tr["Turn Off"], MakeDelegate(this, &GMenu2X::wifiOff) };
+	voices.push_back(opt);
+	}
+
+	listbox(&voices);
+}
+
+void GMenu2X::wifiOff() {
+	system("/sbin/ifconfig wlan0 down");
+
+	nwifilevel = getWiFiLevel();
+	bRedraw=true;
+
+	return;
+}
+
+void GMenu2X::wifiConnect() {
+	MessageBox mb(this,tr["Connecting to wireless network..."],"skin:icons/wifi.png", MakeDelegate(this, &GMenu2X::wpaConnect));
+	if(mb.exec() == 1)
+		wifiAddNetwork();
+}
+
+void GMenu2X::wifiAddNetwork() {
+
+    char line[LINE_BUFSIZE];
+    vector<string> scriptOutput;
+	vector<MenuOption> voices;
+
+    FILE* pipe = popen( GMENU2X_SYSTEM_DIR "/scripts/wifi-scan", "r");
+		if (pipe == NULL) return;
+
+    while (fgets(line, LINE_BUFSIZE, pipe) != NULL)
+		scriptOutput.push_back(line);
+
+	pclose(pipe);
+
+	if(scriptOutput.empty()){
+		MessageBox mb(this,tr["No Networks were found."],"skin:icons/wifi.png");
+		mb.exec();
+		return;
+	}
+
+	for (unsigned int i=0; i<scriptOutput.size(); i++){
+		MenuOption opt = { scriptOutput[i], MakeDelegate(this, &GMenu2X::deadLink) };
+		voices.push_back(opt);
+	}
+
+	int sel = listbox(&voices);
+
+	if(sel >= 0)
+		wpaAdd(scriptOutput[sel]);
+}
+
+void GMenu2X::wpaAdd(string& SSID){
+	//need to ask for the password type
+	vector<MenuOption> voices;
+	string strPassword;
+	string strCommand;
+
+	//trim leading and trailing spaces
+	SSID.erase(remove_if(SSID.begin(), SSID.end(), ::isspace), SSID.end());
+
+	{
+	MenuOption opt = { tr["WPA/WPA2"], MakeDelegate(this, &GMenu2X::deadLink) };
+	voices.push_back(opt);
+	}{
+	MenuOption opt = { tr["Hex WEP Key"], MakeDelegate(this, &GMenu2X::deadLink) };
+	voices.push_back(opt);
+	}{
+	MenuOption opt = { tr["ASCII WEP Key"], MakeDelegate(this, &GMenu2X::deadLink) };
+	voices.push_back(opt);
+	}{
+	MenuOption opt = { tr["none/open"], MakeDelegate(this, &GMenu2X::deadLink) };
+	voices.push_back(opt);
+	}
+
+	int sel = listbox(&voices);
+
+	if(sel < 0) return;
+	//enter the password
+	if(sel == 3)
+		strCommand = "echo -e \"\nnetwork={\n\tssid=\\\"" + SSID + "\\\"\n\tkey_mgmt=NONE\n}\" >> /etc/wpa.conf";
+	else{
+		InputDialog id(this, input, ts, tr["Enter passphrase"],"", tr["Setup"], "skin:icons/wifi.png");
+		if (id.exec() == false)
+		return;
+
+		strPassword = id.getInput();
+
+		switch(sel) {
+				case 0:
+					strCommand = "echo -e \"\nnetwork={\n\tssid=\\\"" + SSID + "\\\"\n\tkey_mgmt=WPA-PSK\n\tpsk=\\\"" + strPassword.c_str() + "\\\"\n}\" >> /etc/wpa.conf";
+					break;
+				case 1:
+				case 2:
+					strCommand = "echo -e \"\nnetwork={\n\tssid=\\\"" + SSID + "\\\"\n\tkey_mgmt=NONE\n\twep_key0=\\\"" + strPassword.c_str() + "\\\"\n}\" >> /etc/wpa.conf";
+					break;
+
+				default:
+					break;
+			}
+	}
+
+	system(strCommand.c_str());
+
+	MessageBox mb(this,tr["Connecting to wireless network..."],"skin:icons/wifi.png", MakeDelegate(this, &GMenu2X::wpaConnect));
+	if(mb.exec() == 1){
+		MessageBox mb(this,tr["Unable to connect with current settings."],"skin:icons/wifi.png");
+		mb.exec();
+	}
+
+}
+
+void GMenu2X::wpaConnect(MessageBox* pMsgBox, int& retVal){
+	int ret = system( GMENU2X_SYSTEM_DIR "/scripts/wpa-connect");
+
+	if(ret == 0){
+		pMsgBox->setText("Connected...");
+		sleep(3);
+
+		nwifilevel = getWiFiLevel();
+		bRedraw=true;
+	}
+	retVal = WEXITSTATUS(ret);
+	return ;
 }

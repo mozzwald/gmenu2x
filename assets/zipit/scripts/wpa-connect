@@ -1,0 +1,59 @@
+#!/bin/sh
+#echo -ne "\nPreparing devices.... \n"
+
+# uncomment for static ip
+#IPADDR=192.168.1.249  
+
+mac(){
+	i2cget -y 1 0x50 $1 | sed s:0x::
+}
+
+macaddr=00:1D:04:$(mac 1):$(mac 2):$(mac 3)
+			
+rmmod batman-adv 2>/dev/null
+killall wpa_supplicant 2>/dev/null
+ifconfig ${1:-wlan0} down 2>/dev/null
+ifconfig bat0 0.0.0.0 2>/dev/null
+#ifdown -a
+
+echo -ne "\nSetting up interface ${1:-wlan0} \n"
+echo ""
+
+
+ifconfig ${1:-wlan0} hw ether $macaddr 2>/dev/null
+	
+if [ $? -ne 0 ]; then
+	echo -e "\nUnable to set MAC Address!"
+	echo $macaddr
+	exit 1
+fi
+
+#echo wpa_supplicant is not running, start it
+
+wpa_supplicant -B -Dwext -i"${1:-wlan0}" -c"${2:-/etc/wpa.conf}" &>/dev/null
+
+
+ifconfig "${1:-wlan0}" up "$IPADDR" 2>/dev/null
+
+if [ -ne $IPADDR ]; then
+	udhcpc -i "${1:-wlan0}" -q -n &>/dev/null
+	if [ $? -ne 0 ]; then
+		#echo -e "\nUnable to obtain ip address"
+		#echo ""
+		killall wpa_supplicant &2>/dev/null
+		ifconfig ${1:-wlan0} down &2>/dev/null
+#		ifdown -a
+
+		exit 1		
+	fi
+fi
+
+#ifup loopback
+ifconfig lo up "127.0.0.1" 2>/dev/null
+
+echo "nameserver $(ip route show | grep -i 'default via' | awk '{print $3}')" >/tmp/resolv.conf
+
+/etc/init.d/htpdate restart
+
+#echo -ne "\nConnected to Network\n"
+exit 0

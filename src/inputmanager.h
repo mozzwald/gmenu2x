@@ -27,7 +27,7 @@ enum actions {
 	INC, DEC,
 	PAGEUP, PAGEDOWN,
 	SETTINGS, MENU,
-	VOLUP, VOLDOWN
+	VOLUP, VOLDOWN, WIFI_SETUP
 };
 
 #include <SDL.h>

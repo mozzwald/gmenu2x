@@ -50,10 +50,14 @@ const int LOOP_DELAY=30000;
 
 #if defined(TARGET_GP2X)
 	#define DEFAULT_CPU_CLK 200
-#elif defined(TARGET_Z2) 
+#elif defined(TARGET_Z2)
 	#define DEFAULT_CPU_CLK 312
 #else
 	#define DEFAULT_CPU_CLK 533
+#endif
+
+#ifndef GMENU2X_SYSTEM_DIR
+	#define GMENU2X_SYSTEM_DIR "/usr/share/gmenu2x"
 #endif
 
 extern const char *CARD_ROOT;
@@ -92,6 +96,7 @@ struct MenuOption {
 };
 
 class Menu;
+class MessageBox;
 
 class GMenu2X {
 private:
@@ -237,6 +242,7 @@ public:
 	void about();
 	void viewLog();
 	void contextMenu();
+	int listbox(vector<MenuOption>* voices);
 	void changeWallpaper();
 	void saveScreenshot();
 
@@ -277,9 +283,16 @@ public:
 	void drawTopBar(Surface *s=NULL);
 	void drawBottomBar(Surface *s=NULL);
 
-#ifdef TARGET_Z2
+	void deadLink(){}
+
 	void getTime(char* strTime, int len);
-#endif
+
+	void wifiConnect();
+	void wifiSetup();
+	void wifiAddNetwork();
+	void wpaConnect(MessageBox* pMsgBox, int& ret);
+	void wifiOff();
+	void wpaAdd(std::string& SSID);
 
 	Menu* menu;
 };
