@@ -20,6 +20,7 @@
 #ifndef INPUTMANAGER_H
 #define INPUTMANAGER_H
 
+/* NUM_ACTIONS must remain last and any new ones added before it */
 enum actions {
 	UP, DOWN, LEFT, RIGHT,
 	CONFIRM, CANCEL, MANUAL, MODIFIER,
@@ -27,7 +28,8 @@ enum actions {
 	INC, DEC,
 	PAGEUP, PAGEDOWN,
 	SETTINGS, MENU,
-	VOLUP, VOLDOWN, WIFI_SETUP
+	VOLUP, VOLDOWN, WIFI_SETUP,
+	NUM_ACTIONS
 };
 
 #include <SDL.h>
