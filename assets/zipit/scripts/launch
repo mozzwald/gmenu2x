@@ -1,0 +1,194 @@
+#!/bin/sh
+
+# Global variable to store Gmenu2X graphical tty
+gmenuTTY=-1
+
+# Kill a process and it's children
+# killtree <pid> <signal>
+# signal is optional
+killtree() {
+    local pid=$1
+    local sig=${2-TERM}
+
+    for child in $(pgrep -P ${pid}); do
+        killtree $child $sig
+    done
+    kill -${sig} $pid  2>/dev/null
+
+	[ -d /proc/$pid ] && sleep 1
+}
+
+# Get the tty of a process and save it to /tmp/vt/
+# findTTY <pid> <appname>
+# This will get the highest tty from the processes open file
+# descriptors which should get us the graphical tty for SDL
+# apps too. Runs with a delay so we can catch any slow to
+# start apps.
+findTTY(){
+	(while [ ! -d /proc/$1/fd ]; do
+		sleep 1
+	done
+
+	cd /proc/$1/fd
+
+	local max_tty=0
+	for item in *; do
+		if [ $(($item)) -gt 2 ]; then
+			local tty=$(readlink $item | grep '/dev/tty'| grep -Eo -e "[0-9]|[0-9][0-9]")
+			if [ $tty ] && [ $tty -gt $max_tty ]; then
+				max_tty=$tty
+				echo $max_tty >/tmp/vt/$2
+			fi
+		fi
+	done) &
+
+	local pid=$!
+
+	(sleep 10 && kill -HUP $pid 2>/dev/null) &
+	local watch=$!
+	wait $pid && killtree $watch HUP
+}
+
+# Get the graphical tty of Gmenu2X into global var gmenuTTY
+# and save to /tmp/vt. Returns 1 if gmenu2x is not running
+# and 0 on success
+getGmenuTTY(){
+	# Get gmenu pid
+	local pid
+	pid=$(pidof gmenu2x.bin)
+	if [ $? -ne 0 ]; then
+		# gmenu2x is not running
+		#echo "gmenu2x is not running"
+		gmenuTTY=-1
+		return 1
+	fi
+
+	cd /proc/$pid/fd
+	local the_tty=0
+	for item in *; do
+		if [ $(($item)) -gt 2 ]; then
+			local tty=$(readlink $item | grep '/dev/tty' | grep -Eo -e "[0-9]|[0-9][0-9]")
+			if [ $tty ] && [ $tty -gt $the_tty ]; then
+				the_tty=$tty
+			fi
+		fi
+	done
+
+	gmenuTTY=$the_tty
+	echo "$gmenuTTY" > /tmp/vt/gmenu2x
+	return 0
+}
+
+# Switch to Gmenu2X graphical tty
+onHome(){
+	killall chvt # just in case it's stuck
+	getGmenuTTY
+	if [ $? -eq 0 ]; then
+		# Try chvt to gmenu2x tty
+		( chvt "$gmenuTTY" ) &
+		local chvtPid=$!
+		sleep 2
+		if  kill -KILL $chvtPid 2>/dev/null; then
+			# something is blocking chvt, likely an SDL app
+			# run termfix on the current console so we can chvt
+			local this_tty=$(fgconsole)
+			termfix "/dev/tty$this_tty" &>/dev/null
+			# try chvt to gmenu2x again
+			( chvt "$gmenuTTY" ) &
+			local chvtPid=$!
+			sleep 2
+			# stop blinking cursor on the previous console so
+			# if we come back to a graphical tty it's not visible
+			echo -e '\033[?17;0;0c' > "/dev/tty$this_tty"
+			kill -KILL $chvtPid 2>/dev/null
+		fi
+	else
+		# gmenu2x isn't running. current app/vt probably running
+		# standalone (exited gmenu2x). kill the children and
+		# restart gmenu2x
+		killtree $(cat /tmp/run/gmenu.pid)
+		killall -9 chvt gmenu2x.bin z2-shell
+		sleep 1
+		getGmenuTTY
+		[ "$gmenuTTY" == $(fgconsole) ] || chvt $gmenuTTY
+	fi
+}
+
+case "$(basename $0)" in
+
+	app.exec)
+		echo $$ >/tmp/apps/$1
+		exec $2
+		;;
+
+	app.stop)
+		local pid=$1
+
+		[ ! $pid ] && exit
+
+		kill $pid 2>/dev/null
+
+		(sleep 10 && kill -9 $pid 2>/dev/null) &
+		local watch=$!
+		wait $pid && killtree $watch HUP
+		for app in /tmp/apps/*; do
+			cat "$app" | grep -q "$pid"
+			if [ $? -eq 0 ]; then
+				rm "$app"
+				if [ -e "/tmp/vt/$(basename $app)" ]; then
+					rm "/tmp/vt/$(basename $app)"
+				fi
+				exit 0
+			fi
+		done
+		;;
+
+	onHome)
+		onHome 2>/dev/null
+		;;
+
+	launch.d)
+		trap 'rm /tmp/vt/$1; rm /tmp/apps/$1' TERM INT
+
+		fgconsole >/tmp/vt/$1
+		echo "starting ${1}..."
+
+		if [ -n "$3" ]; then
+			app.exec $1 "$2"
+		else
+			$2
+		fi
+
+		deallocvt $(cat /tmp/vt/$1)
+		rm /tmp/apps/$1 /tmp/vt/$1
+
+		[ -n "$3" ] && onHome 2>/dev/null
+		;;
+
+	launch)
+		app=$(basename $1)
+		pid=$(cat /tmp/apps/$app) 2>/dev/null
+
+		if [ ! $pid ]; then
+
+			openvt -s launch.d $app "${*}" 1 2>/dev/null
+
+			while [ ! -f /tmp/apps/$app ]; do
+				sleep 1
+			done
+
+			vt=$(cat /tmp/vt/$app) 2>/dev/null
+			pid=$(cat /tmp/apps/$app) 2>/dev/null
+
+			findTTY $pid $app 2>/dev/null
+
+			[ "$vt" != $(cat /tmp/vt/$app) ] && clear >/dev/tty${vt}
+
+		else
+			vt=$(cat /tmp/vt/$app) 2>/dev/null
+
+			[ -n "$vt" ] && chvt $vt
+		fi
+		;;
+
+esac

@@ -53,6 +53,7 @@ private:
 
 	bool wrapper;
 	bool dontleave;
+	bool newterm;
 
 public:
 	LinkApp(GMenu2X *gmenu2x, InputManager &inputMgr, const char* linkfile);

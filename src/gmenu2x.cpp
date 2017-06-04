@@ -1266,6 +1266,9 @@ void GMenu2X::explorer() {
 		chdir(fd.getPath().c_str());
 		quit();
 		setClock(DEFAULT_CPU_CLK);
+#ifdef TARGET_Z2
+		writePID();
+#endif
 		execlp("/bin/sh","/bin/sh","-c",command.c_str(),NULL);
 		//if execution continues then something went wrong and as we already called SDL_Quit we cannot continue
 		//try relaunching gmenu2x
@@ -1460,7 +1463,19 @@ void GMenu2X::setSkin(const string &skin, bool setWallpaper) {
 	initFont();
 }
 
-#ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar.
+#ifdef TARGET_Z2
+/* Saves gmenu pid */
+void GMenu2X::writePID() {
+	ofstream inf("/tmp/run/gmenu.pid");
+	if (inf.is_open()) {
+		inf << getpid()<< endl;
+		inf.close();
+		sync();
+	}
+}
+#endif
+
+#ifdef ZIPIT_Z2 // Dont bother with R and L buttons on title bar
 #else
 void GMenu2X::activateSdUsb() {
 	if (usbnet) {

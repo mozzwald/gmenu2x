@@ -200,6 +200,11 @@ public:
 	*/
 	const string &getExePath();
 
+	/* saves gmenu2x pid to /tmp/run */
+#ifdef TARGET_Z2
+	void writePID();
+#endif
+
 	InputManager input;
 	Touchscreen ts;
 

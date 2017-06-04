@@ -29,6 +29,7 @@
 #include <sstream>
 
 #include "linkapp.h"
+#include "gmenu2x.h"
 #include "menu.h"
 #include "selector.h"
 #include "textmanualdialog.h"
@@ -45,6 +46,7 @@ LinkApp::LinkApp(GMenu2X *gmenu2x_, InputManager &inputMgr_,
 	file = linkfile;
 	wrapper = false;
 	dontleave = false;
+	newterm = true; // default run app in new vt and keep gmenu2x running
 	setClock(DEFAULT_CPU_CLK);
 	setVolume(-1);
 	//G
@@ -84,6 +86,8 @@ LinkApp::LinkApp(GMenu2X *gmenu2x_, InputManager &inputMgr_,
 			if (value=="true") wrapper = true;
 		} else if (name == "dontleave") {
 			if (value=="true") dontleave = true;
+		} else if (name == "newterm") {
+			if (value=="false") newterm = false;
 		} else if (name == "clock") {
 			setClock( atoi(value.c_str()) );
 		//G
@@ -237,6 +241,7 @@ bool LinkApp::save() {
 		if (aliasfile!=""      ) f << "selectoraliases=" << aliasfile       << endl;
 		if (wrapper            ) f << "wrapper=true"                        << endl;
 		if (dontleave          ) f << "dontleave=true"                      << endl;
+		if (newterm            ) f << "newterm=true"                      	<< endl;
 		f.close();
 #if defined(TARGET_Z2)
 		sync();
@@ -373,9 +378,11 @@ void LinkApp::selector(int startSelection, const string &selectorDir) {
 }
 
 void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
-	drawRun();
+	if (!newterm)
+		drawRun();
+
 	save();
-#if !defined(TARGET_GP2X) && !defined(TARGET_WIZ) && !defined(TARGET_CAANOO) && !defined(TARGET_Z2) 
+#if !defined(TARGET_GP2X) && !defined(TARGET_WIZ) && !defined(TARGET_CAANOO) && !defined(TARGET_Z2) && !defined(TARGET_IZ2S)
 	//delay for testing
 	SDL_Delay(1000);
 #endif
@@ -385,7 +392,7 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 	if (!wd.empty())
 		chdir(wd.c_str());
 
-#ifdef TARGET_Z2 /* dontleave params bugfix */
+#if defined(TARGET_Z2) || defined(TARGET_IZ2S) /* dontleave params bugfix */
 	// Bug fix.  Gotta restore original params for multiple dontleave calls.
 	string origParams = params;
 #endif
@@ -407,7 +414,7 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 		if (params=="") {
 			params = cmdclean(dir+selectedFile);
 		} else {
-#ifdef TARGET_Z2 /* dontleave params bugfix */
+#if defined(TARGET_IZ2S) /* dontleave params bugfix */
 			// Bug fix.  Gotta restore original params for multiple dontleave calls.
 #else
 			string origParams = params;
@@ -422,7 +429,7 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 
 	if (useRamTimings)
 		gmenu2x->applyRamTimings();
-#ifdef TARGET_Z2 /* ZIPIT_Z2_VOLUME */
+#ifdef TARGET_IZ2S /* ZIPIT_Z2_VOLUME */
 	// Keep the current mixer volume settings and ignore the linkApp volume setting.
 #else
 	if (volume()>=0)
@@ -446,11 +453,15 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 			chmod( command.c_str(), newstat.st_mode );
 	} // else, well.. we are no worse off :)
 
-#if !defined(TARGET_Z2) 
+#ifdef TARGET_Z2
 	if (params!="") command += " " + params;
 	if (gmenu2x->confInt["outputLogs"]) command += " &> " + cmdclean(gmenu2x->getExePath()) + "/log.txt";
 	if (wrapper) command += "; sync & cd "+cmdclean(gmenu2x->getExePath())+"; exec ./gmenu2x";
 	if (dontleave) {
+		system(command.c_str());
+	} else if(newterm){
+		SDL_WM_IconifyWindow();
+		command = GMENU2X_SYSTEM_DIR "/scripts/launch " + command;
 		system(command.c_str());
 	} else {
 		if (gmenu2x->confInt["saveSelection"] && (gmenu2x->confInt["section"]!=gmenu2x->menu->selSectionIndex() || gmenu2x->confInt["link"]!=gmenu2x->menu->selLinkIndex()))
@@ -459,18 +470,41 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 			gmenu2x->writeConfigOpen2x();
 		if (selectedFile=="")
 			gmenu2x->writeTmp();
+#ifdef TARGET_Z2
+		remove("/tmp/vt/gmenu2x");
+#endif
 		gmenu2x->quit();
 		if (clock()!=gmenu2x->confInt["menuClock"])
 			gmenu2x->setClock(clock());
 		if (gamma()!=0 && gamma()!=gmenu2x->confInt["gamma"])
 			gmenu2x->setGamma(gamma());
+
+		/* Make the terminal we're connected to (via stdin/stdout) our
+		   controlling terminal again.  Else many console programs are
+		   not going to work correctly.  Actually this would not be
+		   necessary, if SDL correctly restored terminal state after
+		   SDL_Quit(). */
+		pid_t pid = setsid();
+		if (pid == (pid_t)-1) {
+			WARNING("Failed to create new process group\n");
+		}
+		ioctl(1, TIOCSCTTY, STDOUT_FILENO);
+
+		int pgid = tcgetpgrp(STDOUT_FILENO);
+		signal(SIGTTOU, SIG_IGN);
+		tcsetpgrp(STDOUT_FILENO, pgid);
+		/* End controlling terminal fix */
+#ifdef TARGET_Z2
+		gmenu2x->writePID();
+#endif
 		execlp("/bin/sh","/bin/sh","-c",command.c_str(),NULL);
 		//if execution continues then something went wrong and as we already called SDL_Quit we cannot continue
 		//try relaunching gmenu2x
 		chdir(gmenu2x->getExePath().c_str());
 		execlp("./gmenu2x", "./gmenu2x", NULL);
 	}
-#else // ZIPIT_Z2
+#endif
+#ifdef TARGET_IZ2S
 	extern char *progpath;
 	string filepath = progpath; //gmenu2x->getExePath();
 
@@ -579,8 +613,11 @@ void LinkApp::launch(const string &selectedFile, const string &selectedDir) {
 	}
 #endif
 
-	//chdir(gmenu2x->getExePath().c_str());
+#ifdef TARGET_IZ2S
 	chdir(filepath.c_str());
+#else
+	chdir(gmenu2x->getExePath().c_str());
+#endif
 }
 
 const string &LinkApp::getExec() {
